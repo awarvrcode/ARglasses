@@ -586,14 +586,17 @@
                 rightEyeOuter.x - leftEyeOuter.x
             );
             
-            // Yaw - 左右轉頭（使用 z 深度差異）
-            const zDiff = rightEyeOuter.z - leftEyeOuter.z;
-            const rawYaw = -1* Math.atan(zDiff / ((rightEyeOuter.x - leftEyeOuter.x) * videoAspect));
+           
+           // Yaw - 左右轉頭（使用 z 深度差異）
+           const zDiff = rightEyeOuter.z - leftEyeOuter.z;
+           const yawSensitivity = 0.5;  // ⭐ 調整這個數值（0.3 - 1.0）
+           const rawYaw = -Math.atan(zDiff / ((rightEyeOuter.x - leftEyeOuter.x) * videoAspect)) * yawSensitivity;
             
             // Pitch - 上下點頭
             const noseToEyeY = centerY - noseTip.y;
             const noseToEyeZ = centerZ - noseTip.z;
-            const rawPitch = -1* Math.atan2(noseToEyeY, Math.abs(noseToEyeZ)) * 0.5;
+            const pitchSensitivity = 0.3;  // ⭐ 調整上下點頭靈敏度
+            const rawPitch = -Math.atan2(noseToEyeY, Math.abs(noseToEyeZ)) * pitchSensitivity;
             
             // 平滑旋轉
             const smoothedRot = smoothFilter.smooth(
