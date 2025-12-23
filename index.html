@@ -606,7 +606,7 @@ function updateGlassesPosition(landmarks) {
     const eyeDistanceRaw = Math.abs(rightEyeOuter.x - leftEyeOuter.x);
     
     // ⭐ 固定縮放公式，完全不受其他因素影響
-    const baseScale = 6.5;  // 增加基礎大小
+    const baseScale = 3.5;  // 增加基礎大小
     const rawScale = eyeDistanceRaw * baseScale;
     
     // 平滑縮放
