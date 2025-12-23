@@ -568,7 +568,7 @@ function updateGlassesPosition(landmarks) {
     const rawY = -(centerY - 0.5) * 2;
     
     // ⭐ 調整深度：改成更近的距離
-    const rawZ = -0.3;  // 原本是 -0.5，現在改成 -0.3（數字越小越近）
+    const rawZ = 1;  // 原本是 -0.5，現在改成 -0.3（數字越小越近）
     
     // 應用平滑濾波
     const smoothedPos = smoothFilter.smooth([rawX, rawY, rawZ], 'position');
