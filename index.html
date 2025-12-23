@@ -556,7 +556,7 @@ function updateGlassesPosition(landmarks) {
     const depthScale = 0.1;  // 幾乎忽略深度
     const rawZ = centerZ * depthScale;
     
-    const distance = 0.03;  // 非常近！
+    const distance = 0.02;  // 非常近！
     
     const correctedX = rawX * videoAspect * 0.6;
     const correctedY = rawY * 0.6;
@@ -598,7 +598,7 @@ function updateGlassesPosition(landmarks) {
     
     // 縮放
     const eyeDistanceRaw = Math.abs(rightEyeOuter.x - leftEyeOuter.x);
-    const baseScale = 7.5;  // 很大
+    const baseScale = 6.0;  // 很大
     const rawScale = eyeDistanceRaw * baseScale;
     
     const smoothedScale = smoothFilter.smooth(rawScale, 'scale');
