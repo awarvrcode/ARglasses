@@ -529,7 +529,7 @@
         }
         
         // ==================== 更新眼鏡位置（完全重寫）====================
-// ==================== 更新眼鏡位置（完全重寫 - 解決飄遠問題）====================
+// ==================== 更新眼鏡位置（激進拉近版本）====================
 function updateGlassesPosition(landmarks) {
     if (!glassesModel) return;
     
@@ -541,12 +541,11 @@ function updateGlassesPosition(landmarks) {
     const leftEyeOuter = landmarks[33];     // 左眼外角
     const rightEyeOuter = landmarks[263];   // 右眼外角
     const noseTip = landmarks[1];           // 鼻尖
-    const noseBridge = landmarks[6];        // 鼻樑（更穩定的參考點）
+    const noseBridge = landmarks[6];        // 鼻樑
     
     // ===== 計算眼鏡中心位置 =====
-    // ⭐ 使用眼睛外角的中點（更準確對應眼鏡位置）
     const centerX = (leftEyeOuter.x + rightEyeOuter.x) / 2;
-    const centerY = (leftEyeOuter.y + rightEyeOuter.y) / 2 - 0.01; // 稍微往上調整
+    const centerY = (leftEyeOuter.y + rightEyeOuter.y) / 2;
     const centerZ = (leftEyeOuter.z + rightEyeOuter.z) / 2;
     
     // ===== 座標轉換 =====
@@ -555,18 +554,10 @@ function updateGlassesPosition(landmarks) {
     const rawX = (centerX - 0.5) * 2;
     const rawY = -(centerY - 0.5) * 2;
     
-    // ⭐ 關鍵修正：大幅拉近眼鏡，並降低深度影響
-    const depthScale = 0.5;  // 降低深度敏感度
-    const rawZ = centerZ * depthScale;
-    
-    // ⭐ 將眼鏡拉近到臉部
-    const baseDistance = 0.15;  // 從 0.3 改為 0.15（拉近一半）
-    
-    // 簡單的透視補償
-    const perspectiveFactor = 1.0 - rawZ * 0.2;
-    const correctedX = rawX * videoAspect * perspectiveFactor;
-    const correctedY = rawY * perspectiveFactor;
-    const correctedZ = rawZ - baseDistance;
+    // ⭐⭐⭐ 關鍵修正：直接設定很近的距離 ⭐⭐⭐
+    const correctedX = rawX * videoAspect * 0.6;  // 簡化計算
+    const correctedY = rawY * 0.6;
+    const correctedZ = -0.05;  // 直接設定固定距離（非常近）
     
     // 平滑濾波
     const smoothedPos = smoothFilter.smooth(
@@ -587,15 +578,15 @@ function updateGlassesPosition(landmarks) {
         rightEyeOuter.x - leftEyeOuter.x
     );
     
-    // Yaw - 左右轉頭（使用眼睛寬度比例）
-    const eyeDistanceNormalized = Math.abs(rightEyeCenter.x - leftEyeCenter.x);
-    const yawSensitivity = 0.5;
-    const yawOffset = (0.1 - eyeDistanceNormalized) * yawSensitivity;
-    const rawYaw = Math.max(-0.5, Math.min(0.5, yawOffset));
+    // Yaw - 左右轉頭
+    const eyeDistanceX = Math.abs(rightEyeCenter.x - leftEyeCenter.x);
+    const yawSensitivity = 0.4;
+    const yawOffset = (0.1 - eyeDistanceX) * yawSensitivity;
+    const rawYaw = Math.max(-0.4, Math.min(0.4, yawOffset));
     
-    // ⭐ Pitch - 改用鼻樑點，更穩定
+    // Pitch - 上下點頭（降低靈敏度）
     const eyeToBridgeY = centerY - noseBridge.y;
-    const pitchSensitivity = 0.35;
+    const pitchSensitivity = 0.2;  // 降低到 0.2
     const rawPitch = eyeToBridgeY * pitchSensitivity;
     
     // 平滑旋轉
@@ -610,20 +601,13 @@ function updateGlassesPosition(landmarks) {
         smoothedRot[2]
     );
     
-    // ===== 計算縮放（完全重寫）=====
-    // ⭐ 只使用 2D 眼睛間距，完全忽略 Z 軸影響
-    const eyeDistanceX = Math.abs(rightEyeOuter.x - leftEyeOuter.x);
-    const eyeDistanceY = Math.abs(rightEyeOuter.y - leftEyeOuter.y);
+    // ===== 計算縮放（完全固定版本）=====
+    // ⭐ 只使用 X 軸距離
+    const eyeDistanceRaw = Math.abs(rightEyeOuter.x - leftEyeOuter.x);
     
-    // 計算 2D 歐式距離
-    const eyeDistance2D = Math.sqrt(
-        Math.pow(eyeDistanceX * videoAspect, 2) +
-        Math.pow(eyeDistanceY, 2)
-    );
-    
-    // ⭐ 固定縮放，不受深度或 Pitch 影響
-    const baseScale = 2.8;  // 調整基礎大小
-    const rawScale = eyeDistance2D * baseScale;
+    // ⭐ 固定縮放公式，完全不受其他因素影響
+    const baseScale = 5.5;  // 增加基礎大小
+    const rawScale = eyeDistanceRaw * baseScale;
     
     // 平滑縮放
     const smoothedScale = smoothFilter.smooth(rawScale, 'scale');
@@ -633,9 +617,9 @@ function updateGlassesPosition(landmarks) {
     if (frameCount % 60 === 0) {
         console.log('═══════════════════════════');
         console.log('位置 XYZ:', smoothedPos.map(v => v.toFixed(3)));
-        console.log('旋轉 P/Y/R:', smoothedRot.map(v => (v * 180 / Math.PI).toFixed(1)) + '°');
+        console.log('Z 固定在:', correctedZ);
         console.log('縮放:', smoothedScale.toFixed(3));
-        console.log('2D 眼距:', eyeDistance2D.toFixed(4));
+        console.log('眼距:', eyeDistanceRaw.toFixed(4));
     }
 }
         
