@@ -529,24 +529,22 @@
         }
         
         // ==================== 更新眼鏡位置（完全重寫）====================
-// ==================== 更新眼鏡位置（激進拉近版本）====================
+// ==================== 更新眼鏡位置（激進拉近）====================
 function updateGlassesPosition(landmarks) {
     if (!glassesModel) return;
     
     glassesModel.visible = true;
     
     // ===== 關鍵特徵點 =====
-    const leftEyeCenter = landmarks[468];   // 左眼中心
-    const rightEyeCenter = landmarks[473];  // 右眼中心
-    const leftEyeOuter = landmarks[33];     // 左眼外角
-    const rightEyeOuter = landmarks[263];   // 右眼外角
-    const noseTip = landmarks[1];           // 鼻尖
-    const noseBridge = landmarks[6];        // 鼻樑
+    const leftEyeCenter = landmarks[468];
+    const rightEyeCenter = landmarks[473];
+    const leftEyeOuter = landmarks[33];
+    const rightEyeOuter = landmarks[263];
+    const noseBridge = landmarks[6];
     
     // ===== 計算眼鏡中心位置 =====
     const centerX = (leftEyeOuter.x + rightEyeOuter.x) / 2;
     const centerY = (leftEyeOuter.y + rightEyeOuter.y) / 2;
-    const centerZ = (leftEyeOuter.z + rightEyeOuter.z) / 2;
     
     // ===== 座標轉換 =====
     const videoAspect = video.videoWidth / video.videoHeight;
@@ -554,12 +552,11 @@ function updateGlassesPosition(landmarks) {
     const rawX = (centerX - 0.5) * 2;
     const rawY = -(centerY - 0.5) * 2;
     
-    // ⭐⭐⭐ 關鍵修正：直接設定很近的距離 ⭐⭐⭐
-    const correctedX = rawX * videoAspect * 0.6;  // 簡化計算
-    const correctedY = rawY * 0.6;
-    const correctedZ = -0.01;  // 直接設定固定距離（非常近）
+    // ⭐⭐⭐ 版本 1：Z = 0（幾乎貼在臉上）⭐⭐⭐
+    const correctedX = rawX * videoAspect * 0.5;
+    const correctedY = rawY * 0.5;
+    const correctedZ = 0;  // 改成 0
     
-    // 平滑濾波
     const smoothedPos = smoothFilter.smooth(
         [correctedX, correctedY, correctedZ], 
         'position'
@@ -571,25 +568,18 @@ function updateGlassesPosition(landmarks) {
         smoothedPos[2]
     );
     
-    // ===== 計算旋轉 =====
-    // Roll - 左右歪頭
+    // ===== 旋轉 =====
     const rawRoll = -Math.atan2(
         rightEyeOuter.y - leftEyeOuter.y,
         rightEyeOuter.x - leftEyeOuter.x
     );
     
-    // Yaw - 左右轉頭
     const eyeDistanceX = Math.abs(rightEyeCenter.x - leftEyeCenter.x);
-    const yawSensitivity = 0.4;
-    const yawOffset = (0.1 - eyeDistanceX) * yawSensitivity;
-    const rawYaw = Math.max(-0.4, Math.min(0.4, yawOffset));
+    const rawYaw = (0.1 - eyeDistanceX) * 0.3;
     
-    // Pitch - 上下點頭（降低靈敏度）
-    const eyeToBridgeY = centerY - noseBridge.y;
-    const pitchSensitivity = 0.2;  // 降低到 0.2
-    const rawPitch = eyeToBridgeY * pitchSensitivity;
+    const eyeToBridgeY = (leftEyeOuter.y + rightEyeOuter.y) / 2 - noseBridge.y;
+    const rawPitch = eyeToBridgeY * 0.15;
     
-    // 平滑旋轉
     const smoothedRot = smoothFilter.smooth(
         [rawPitch, rawYaw, rawRoll], 
         'rotation'
@@ -601,27 +591,19 @@ function updateGlassesPosition(landmarks) {
         smoothedRot[2]
     );
     
-    // ===== 計算縮放（完全固定版本）=====
-    // ⭐ 只使用 X 軸距離
+    // ===== 縮放 =====
     const eyeDistanceRaw = Math.abs(rightEyeOuter.x - leftEyeOuter.x);
-    
-    // ⭐ 固定縮放公式，完全不受其他因素影響
-    const baseScale = 3.5;  // 增加基礎大小
+    const baseScale = 6.0;  // 增加到 6.0
     const rawScale = eyeDistanceRaw * baseScale;
     
-    // 平滑縮放
     const smoothedScale = smoothFilter.smooth(rawScale, 'scale');
     glassesModel.scale.set(smoothedScale, smoothedScale, smoothedScale);
     
-    // 除錯資訊
     if (frameCount % 60 === 0) {
-        console.log('═══════════════════════════');
-        console.log('位置 XYZ:', smoothedPos.map(v => v.toFixed(3)));
-        console.log('Z 固定在:', correctedZ);
-        console.log('縮放:', smoothedScale.toFixed(3));
-        console.log('眼距:', eyeDistanceRaw.toFixed(4));
+        console.log('版本1 - Z=0 | 位置:', smoothedPos.map(v => v.toFixed(3)));
     }
 }
+
         
         // ==================== 按鈕事件 ====================
         document.getElementById('model1').addEventListener('click', () => {
