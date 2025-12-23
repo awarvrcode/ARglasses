@@ -531,39 +531,36 @@
 
 
         // ==================== 更新眼鏡位置（完全重寫）====================
-// ==================== 更新眼鏡位置（小幅拉近 - 保證看得到）====================
+// ==================== 更新眼鏡位置（大幅拉近 - 極限版）====================
 function updateGlassesPosition(landmarks) {
     if (!glassesModel) return;
     
     glassesModel.visible = true;
     
-    // ===== 關鍵特徵點 =====
     const leftEyeCenter = landmarks[468];
     const rightEyeCenter = landmarks[473];
     const leftEyeOuter = landmarks[33];
     const rightEyeOuter = landmarks[263];
     const noseBridge = landmarks[6];
     
-    // ===== 計算中心位置 =====
     const centerX = (leftEyeOuter.x + rightEyeOuter.x) / 2;
     const centerY = (leftEyeOuter.y + rightEyeOuter.y) / 2;
     const centerZ = (leftEyeOuter.z + rightEyeOuter.z) / 2;
     
-    // ===== 座標轉換 =====
     const videoAspect = video.videoWidth / video.videoHeight;
     
     const rawX = (centerX - 0.5) * 2;
     const rawY = -(centerY - 0.5) * 2;
     
-    // ⭐ 版本 A：輕微的深度 + 近距離
-    const depthScale = 0.3;  // 很小的深度影響
+    // ⭐ 版本 C：極近距離
+    const depthScale = 0.1;  // 幾乎忽略深度
     const rawZ = centerZ * depthScale;
     
-    const distance = 0.2;  // 從 0.3 改成 0.2
+    const distance = 0.06;  // 非常近！
     
-    const correctedX = rawX * videoAspect * 0.8;
-    const correctedY = rawY * 0.8;
-    const correctedZ = rawZ - distance;  // 應該在 -0.15 到 -0.25 之間
+    const correctedX = rawX * videoAspect * 0.6;
+    const correctedY = rawY * 0.6;
+    const correctedZ = rawZ - distance;  // 應該在 -0.04 到 -0.08 之間
     
     const smoothedPos = smoothFilter.smooth(
         [correctedX, correctedY, correctedZ], 
@@ -576,7 +573,7 @@ function updateGlassesPosition(landmarks) {
         smoothedPos[2]
     );
     
-    // ===== 旋轉 =====
+    // 旋轉
     const rawRoll = -Math.atan2(
         rightEyeOuter.y - leftEyeOuter.y,
         rightEyeOuter.x - leftEyeOuter.x
@@ -599,25 +596,21 @@ function updateGlassesPosition(landmarks) {
         smoothedRot[2]
     );
     
-    // ===== 縮放 =====
+    // 縮放
     const eyeDistanceRaw = Math.abs(rightEyeOuter.x - leftEyeOuter.x);
-    const baseScale = 3.5;  // 適中大小
+    const baseScale = 6.0;  // 很大
     const rawScale = eyeDistanceRaw * baseScale;
     
     const smoothedScale = smoothFilter.smooth(rawScale, 'scale');
     glassesModel.scale.set(smoothedScale, smoothedScale, smoothedScale);
     
-    // 診斷訊息
     if (frameCount % 60 === 0) {
-        console.log('📍 版本A');
+        console.log('📍 版本C');
         console.log('  位置 XYZ:', smoothedPos.map(v => v.toFixed(3)));
-        console.log('  原始 centerZ:', centerZ.toFixed(3));
         console.log('  最終 Z:', smoothedPos[2].toFixed(3));
         console.log('  縮放:', smoothedScale.toFixed(3));
     }
 }
-
-
 
 
 
