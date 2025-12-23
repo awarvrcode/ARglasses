@@ -32,7 +32,7 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            transform: scaleX(-1); /* 鏡像翻轉 */
+            transform: scaleX(-1);
         }
         
         #output {
@@ -41,7 +41,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            transform: scaleX(-1); /* 鏡像翻轉 */
+            transform: scaleX(-1);
         }
         
         .loading {
@@ -114,21 +114,6 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.3);
         }
         
-        .debug {
-            position: absolute;
-            top: 60px;
-            right: 20px;
-            background: rgba(0,0,0,0.8);
-            color: #0f0;
-            padding: 10px 15px;
-            border-radius: 8px;
-            font-size: 12px;
-            z-index: 100;
-            font-family: monospace;
-            max-width: 200px;
-            display: none; /* 預設隱藏，需要時改成 block */
-        }
-        
         @media (max-width: 768px) {
             button {
                 padding: 12px 20px;
@@ -159,20 +144,16 @@
         </div>
         
         <div class="info" id="info">FPS: --</div>
-        <div class="debug" id="debug">
-            位置: --<br>
-            縮放: --<br>
-            旋轉: --
-        </div>
     </div>
 
-    <!-- MediaPipe Face Mesh -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
-   
+    <!-- ✅ 修正後的 MediaPipe CDN 連結 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
     
     <!-- Three.js -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js" crossorigin="anonymous"></script>
 
     <script>
         // ==================== 全域變數 ====================
@@ -180,32 +161,31 @@
         const canvas = document.getElementById('output');
         const loading = document.getElementById('loading');
         const infoDiv = document.getElementById('info');
-        const debugDiv = document.getElementById('debug');
         
         let scene, camera, renderer, glassesModel;
         let currentStyle = 'classic';
         let lastTime = Date.now();
         let frameCount = 0;
         
-        // 啟用除錯模式（設為 true 可以看到座標資訊）
-        const DEBUG_MODE = false;
-        if (DEBUG_MODE) {
-            debugDiv.style.display = 'block';
-        }
+        // ==================== 錯誤處理 ====================
+        window.addEventListener('error', (e) => {
+            console.error('全域錯誤:', e.message);
+            loading.innerHTML = `
+                載入失敗<br>
+                <small>${e.message}</small>
+            `;
+        });
         
         // ==================== Three.js 場景設定 ====================
         function initThreeJS() {
             console.log('初始化 Three.js...');
             
-            // 建立場景
             scene = new THREE.Scene();
             
-            // 建立透視相機
             const aspect = window.innerWidth / window.innerHeight;
             camera = new THREE.PerspectiveCamera(63, aspect, 0.1, 1000);
             camera.position.set(0, 0, 0);
             
-            // 建立 WebGL 渲染器
             renderer = new THREE.WebGLRenderer({
                 canvas: canvas,
                 alpha: true,
@@ -215,16 +195,13 @@
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setClearColor(0x000000, 0);
             
-            // 添加環境光
             const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
             scene.add(ambientLight);
             
-            // 添加方向光（模擬太陽光）
             const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
             directionalLight.position.set(0, 1, 1);
             scene.add(directionalLight);
             
-            // 添加額外的側光
             const sideLight = new THREE.DirectionalLight(0xffffff, 0.4);
             sideLight.position.set(-1, 0, 0.5);
             scene.add(sideLight);
@@ -236,7 +213,6 @@
         function createClassicGlasses() {
             const group = new THREE.Group();
             
-            // 材質定義
             const frameMaterial = new THREE.MeshPhongMaterial({
                 color: 0x000000,
                 shininess: 80,
@@ -251,7 +227,6 @@
                 specular: 0x444444
             });
             
-            // 左鏡片
             const leftLens = new THREE.Mesh(
                 new THREE.CircleGeometry(0.045, 32),
                 lensMaterial
@@ -259,7 +234,6 @@
             leftLens.position.set(-0.065, 0, 0);
             group.add(leftLens);
             
-            // 左鏡框
             const leftFrame = new THREE.Mesh(
                 new THREE.TorusGeometry(0.045, 0.006, 16, 32),
                 frameMaterial
@@ -267,7 +241,6 @@
             leftFrame.position.set(-0.065, 0, 0);
             group.add(leftFrame);
             
-            // 右鏡片
             const rightLens = new THREE.Mesh(
                 new THREE.CircleGeometry(0.045, 32),
                 lensMaterial
@@ -275,7 +248,6 @@
             rightLens.position.set(0.065, 0, 0);
             group.add(rightLens);
             
-            // 右鏡框
             const rightFrame = new THREE.Mesh(
                 new THREE.TorusGeometry(0.045, 0.006, 16, 32),
                 frameMaterial
@@ -283,7 +255,6 @@
             rightFrame.position.set(0.065, 0, 0);
             group.add(rightFrame);
             
-            // 鼻樑
             const bridge = new THREE.Mesh(
                 new THREE.CylinderGeometry(0.005, 0.005, 0.03, 8),
                 frameMaterial
@@ -291,7 +262,6 @@
             bridge.rotation.z = Math.PI / 2;
             group.add(bridge);
             
-            // 左鏡腿
             const leftTemple = new THREE.Mesh(
                 new THREE.CylinderGeometry(0.004, 0.004, 0.15, 8),
                 frameMaterial
@@ -300,7 +270,6 @@
             leftTemple.position.set(-0.14, 0, 0);
             group.add(leftTemple);
             
-            // 右鏡腿
             const rightTemple = new THREE.Mesh(
                 new THREE.CylinderGeometry(0.004, 0.004, 0.15, 8),
                 frameMaterial
@@ -317,7 +286,7 @@
             const group = new THREE.Group();
             
             const frameMaterial = new THREE.MeshPhongMaterial({
-                color: 0xC0C0C0,  // 銀色
+                color: 0xC0C0C0,
                 shininess: 100,
                 metalness: 0.8
             });
@@ -329,7 +298,6 @@
                 shininess: 120
             });
             
-            // 左鏡片（橢圓形）
             const leftLens = new THREE.Mesh(
                 new THREE.CircleGeometry(0.05, 32),
                 lensMaterial
@@ -338,7 +306,6 @@
             leftLens.position.set(-0.065, 0, 0);
             group.add(leftLens);
             
-            // 左鏡框
             const leftFrame = new THREE.Mesh(
                 new THREE.TorusGeometry(0.05, 0.005, 16, 32),
                 frameMaterial
@@ -347,7 +314,6 @@
             leftFrame.position.set(-0.065, 0, 0);
             group.add(leftFrame);
             
-            // 右鏡片
             const rightLens = new THREE.Mesh(
                 new THREE.CircleGeometry(0.05, 32),
                 lensMaterial
@@ -356,7 +322,6 @@
             rightLens.position.set(0.065, 0, 0);
             group.add(rightLens);
             
-            // 右鏡框
             const rightFrame = new THREE.Mesh(
                 new THREE.TorusGeometry(0.05, 0.005, 16, 32),
                 frameMaterial
@@ -365,7 +330,6 @@
             rightFrame.position.set(0.065, 0, 0);
             group.add(rightFrame);
             
-            // 鼻樑（雙槓設計）
             const bridgeTop = new THREE.Mesh(
                 new THREE.CylinderGeometry(0.004, 0.004, 0.025, 8),
                 frameMaterial
@@ -374,7 +338,6 @@
             bridgeTop.position.y = 0.015;
             group.add(bridgeTop);
             
-            // 鏡腿
             const leftTemple = new THREE.Mesh(
                 new THREE.CylinderGeometry(0.004, 0.004, 0.15, 8),
                 frameMaterial
@@ -399,7 +362,7 @@
             const group = new THREE.Group();
             
             const frameMaterial = new THREE.MeshPhongMaterial({
-                color: 0x8B4513,  // 棕色
+                color: 0x8B4513,
                 shininess: 60
             });
             
@@ -412,7 +375,6 @@
             
             const radius = 0.042;
             
-            // 左鏡片
             const leftLens = new THREE.Mesh(
                 new THREE.CircleGeometry(radius, 32),
                 lensMaterial
@@ -420,7 +382,6 @@
             leftLens.position.set(-0.06, 0, 0);
             group.add(leftLens);
             
-            // 左鏡框
             const leftFrame = new THREE.Mesh(
                 new THREE.TorusGeometry(radius, 0.007, 16, 32),
                 frameMaterial
@@ -428,7 +389,6 @@
             leftFrame.position.set(-0.06, 0, 0);
             group.add(leftFrame);
             
-            // 右鏡片
             const rightLens = new THREE.Mesh(
                 new THREE.CircleGeometry(radius, 32),
                 lensMaterial
@@ -436,7 +396,6 @@
             rightLens.position.set(0.06, 0, 0);
             group.add(rightLens);
             
-            // 右鏡框
             const rightFrame = new THREE.Mesh(
                 new THREE.TorusGeometry(radius, 0.007, 16, 32),
                 frameMaterial
@@ -444,7 +403,6 @@
             rightFrame.position.set(0.06, 0, 0);
             group.add(rightFrame);
             
-            // 鼻樑
             const bridge = new THREE.Mesh(
                 new THREE.CylinderGeometry(0.005, 0.005, 0.025, 8),
                 frameMaterial
@@ -452,7 +410,6 @@
             bridge.rotation.z = Math.PI / 2;
             group.add(bridge);
             
-            // 鏡腿
             const leftTemple = new THREE.Mesh(
                 new THREE.CylinderGeometry(0.005, 0.005, 0.15, 8),
                 frameMaterial
@@ -481,15 +438,12 @@
             switch(style) {
                 case 'classic':
                     glassesModel = createClassicGlasses();
-                    console.log('切換到經典款');
                     break;
                 case 'aviator':
                     glassesModel = createAviatorGlasses();
-                    console.log('切換到飛行員款');
                     break;
                 case 'round':
                     glassesModel = createRoundGlasses();
-                    console.log('切換到圓框款');
                     break;
             }
             
@@ -515,12 +469,10 @@
         
         // ==================== 處理偵測結果 ====================
         function onResults(results) {
-            // 隱藏載入提示
             if (loading.style.display !== 'none') {
                 loading.style.display = 'none';
             }
             
-            // 計算 FPS
             frameCount++;
             const now = Date.now();
             if (now - lastTime > 1000) {
@@ -529,82 +481,61 @@
                 lastTime = now;
             }
             
-            // 更新眼鏡位置
             if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
                 const landmarks = results.multiFaceLandmarks[0];
                 updateGlassesPosition(landmarks);
             } else {
-                // 沒偵測到臉部，隱藏眼鏡
                 if (glassesModel) {
                     glassesModel.visible = false;
                 }
             }
             
-            // 渲染場景
             renderer.render(scene, camera);
         }
         
-        // ==================== 更新眼鏡位置（核心功能）====================
+        // ==================== 更新眼鏡位置 ====================
         function updateGlassesPosition(landmarks) {
             if (!glassesModel) return;
             
             glassesModel.visible = true;
             
-            // MediaPipe 關鍵特徵點
-            const leftEyeOuter = landmarks[33];    // 左眼外角
-            const rightEyeOuter = landmarks[263];  // 右眼外角
-            const leftEyeInner = landmarks[133];   // 左眼內角
-            const rightEyeInner = landmarks[362];  // 右眼內角
-            const noseTip = landmarks[1];          // 鼻尖
+            const leftEyeOuter = landmarks[33];
+            const rightEyeOuter = landmarks[263];
+            const leftEyeInner = landmarks[133];
+            const rightEyeInner = landmarks[362];
+            const noseTip = landmarks[1];
             
-            // ===== 計算中心位置 =====
             const centerX = (leftEyeOuter.x + rightEyeOuter.x) / 2;
             const centerY = (leftEyeOuter.y + rightEyeOuter.y) / 2;
             const centerZ = (leftEyeOuter.z + rightEyeOuter.z) / 2;
             
-            // ===== 座標轉換（MediaPipe → Three.js）=====
             const videoAspect = video.videoWidth / video.videoHeight;
             const x = (centerX - 0.5) * 2 * videoAspect;
             const y = -(centerY - 0.5) * 2;
-            const z = -0.5;  // 固定深度
+            const z = -0.5;
             
             glassesModel.position.set(x, y, z);
             
-            // ===== 計算旋轉角度 =====
-            // Roll (左右歪頭)
             const roll = Math.atan2(
                 rightEyeOuter.y - leftEyeOuter.y,
                 rightEyeOuter.x - leftEyeOuter.x
             );
             
-            // Yaw (左右轉頭) - 簡化版
             const faceWidth = rightEyeInner.x - leftEyeInner.x;
             const yaw = (faceWidth - 0.15) * 2;
             
-            // Pitch (上下點頭) - 簡化版
             const pitch = -(centerY - noseTip.y) * 3;
             
             glassesModel.rotation.set(pitch, yaw, roll);
             
-            // ===== 計算縮放 =====
             const eyeDistance = Math.sqrt(
                 Math.pow((rightEyeOuter.x - leftEyeOuter.x) * videoAspect, 2) +
                 Math.pow(rightEyeOuter.y - leftEyeOuter.y, 2)
             );
             
-            // 調整這個數值來改變眼鏡大小（1.0-2.5）
             const baseScale = 1.6;
             const scale = eyeDistance * baseScale;
             glassesModel.scale.set(scale, scale, scale);
-            
-            // ===== 除錯資訊 =====
-            if (DEBUG_MODE && frameCount % 10 === 0) {
-                debugDiv.innerHTML = `
-                    位置: ${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)}<br>
-                    縮放: ${scale.toFixed(2)}<br>
-                    旋轉: ${(pitch*57.3).toFixed(0)}°, ${(yaw*57.3).toFixed(0)}°, ${(roll*57.3).toFixed(0)}°
-                `;
-            }
         }
         
         // ==================== 按鈕事件 ====================
@@ -643,13 +574,22 @@
             console.log('🚀 開始初始化應用...');
             
             try {
-                // 1. 初始化 Three.js
-                initThreeJS();
+                // 檢查必要的物件是否載入
+                if (typeof THREE === 'undefined') {
+                    throw new Error('Three.js 未載入');
+                }
+                if (typeof FaceMesh === 'undefined') {
+                    throw new Error('MediaPipe Face Mesh 未載入');
+                }
+                if (typeof Camera === 'undefined') {
+                    throw new Error('MediaPipe Camera 未載入');
+                }
                 
-                // 2. 建立預設眼鏡（經典款）
+                console.log('✓ 所有庫載入成功');
+                
+                initThreeJS();
                 switchGlassesStyle('classic');
                 
-                // 3. 啟動相機
                 console.log('📷 啟動相機...');
                 const cameraInstance = new Camera(video, {
                     onFrame: async () => {
@@ -662,20 +602,23 @@
                 
                 await cameraInstance.start();
                 console.log('✓ 相機啟動成功');
-                console.log('✓ 應用初始化完成');
                 
             } catch (error) {
                 console.error('❌ 初始化失敗:', error);
                 loading.innerHTML = `
-                    無法訪問相機<br>
-                    <small>請確認瀏覽器權限設定</small>
+                    初始化失敗<br>
+                    <small>${error.message}</small><br>
+                    <small style="margin-top:10px;display:block">請重新整理頁面或檢查相機權限</small>
                 `;
             }
         }
         
-        // 啟動應用
-        init();
+        // 等待所有 script 載入完成後再初始化
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
     </script>
 </body>
 </html>
-
