@@ -557,7 +557,7 @@ function updateGlassesPosition(landmarks) {
     // ⭐⭐⭐ 關鍵修正：直接設定很近的距離 ⭐⭐⭐
     const correctedX = rawX * videoAspect * 0.6;  // 簡化計算
     const correctedY = rawY * 0.6;
-    const correctedZ = -0.03;  // 直接設定固定距離（非常近）
+    const correctedZ = -0.01;  // 直接設定固定距離（非常近）
     
     // 平滑濾波
     const smoothedPos = smoothFilter.smooth(
