@@ -209,45 +209,53 @@
             ctx.restore();
         }
         
+
+
         function drawClassicSunglasses(width, height) {
-            const lensWidth = width * 0.4;
-            const lensHeight = height * 0.8;
-            const bridge = width * 0.1;
-            
-            // 鏡框顏色 - 黑色
-            ctx.strokeStyle = '#000000';
-            ctx.lineWidth = 6;
-            ctx.fillStyle = 'rgba(50, 50, 50, 0.7)';
-            
-            // 左鏡片
-            ctx.beginPath();
-            ctx.roundRect(-width/2 + lensWidth/2, -height/2, lensWidth, lensHeight, 5);
-            ctx.fill();
-            ctx.stroke();
-            
-            // 右鏡片
-            ctx.beginPath();
-            ctx.roundRect(width/2 - lensWidth*1.5, -height/2, lensWidth, lensHeight, 5);
-            ctx.fill();
-            ctx.stroke();
-            
-            // 鼻樑
-            ctx.beginPath();
-            ctx.moveTo(-bridge/4, 0);
-            ctx.lineTo(bridge/4, 0);
-            ctx.stroke();
-            
-            // 鏡腿
-            ctx.beginPath();
-            ctx.moveTo(-width/2, 0);
-            ctx.lineTo(-width/2 - 30, 0);
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(width/2, 0);
-            ctx.lineTo(width/2 + 30, 0);
-            ctx.stroke();
-        }
+    const lensWidth = width * 0.38;  // 每個鏡片寬度
+    const lensHeight = height * 0.8;
+    const bridge = width * 0.12;     // 鼻樑寬度
+    const gap = bridge / 2;          // 鏡片與中心的間隙
+    
+    // 鏡框顏色 - 黑色
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 6;
+    ctx.fillStyle = 'rgba(50, 50, 50, 0.7)';
+    
+    // 左鏡片（位於中心左側，留出鼻樑空間）
+    ctx.beginPath();
+    ctx.roundRect(-gap - lensWidth, -height/2, lensWidth, lensHeight, 5);
+    ctx.fill();
+    ctx.stroke();
+    
+    // 右鏡片（位於中心右側，留出鼻樑空間）
+    ctx.beginPath();
+    ctx.roundRect(gap, -height/2, lensWidth, lensHeight, 5);
+    ctx.fill();
+    ctx.stroke();
+    
+    // 鼻樑
+    ctx.beginPath();
+    ctx.moveTo(-gap, 0);
+    ctx.lineTo(gap, 0);
+    ctx.stroke();
+    
+    // 左鏡腿
+    ctx.beginPath();
+    ctx.moveTo(-gap - lensWidth, 0);
+    ctx.lineTo(-gap - lensWidth - 30, 0);
+    ctx.stroke();
+    
+    // 右鏡腿
+    ctx.beginPath();
+    ctx.moveTo(gap + lensWidth, 0);
+    ctx.lineTo(gap + lensWidth + 30, 0);
+    ctx.stroke();
+}
+        
+
+
+        
         
         function drawAviatorSunglasses(width, height) {
             const lensWidth = width * 0.35;
