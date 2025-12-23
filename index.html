@@ -211,7 +211,7 @@
         
 
 
-        function drawClassicSunglasses(width, height) {
+    function drawClassicSunglasses(width, height) {
     const lensWidth = width * 0.38;  // 每個鏡片寬度
     const lensHeight = height * 0.8;
     const bridge = width * 0.3;     // 鼻樑寬度
@@ -258,7 +258,7 @@
         
         
         function drawAviatorSunglasses(width, height) {
-            const lensWidth = width * 0.35;
+            const lensWidth = width * 0.45;
             const lensHeight = height * 0.9;
             
             ctx.strokeStyle = '#C0C0C0'; // 銀色框
@@ -267,13 +267,13 @@
             
             // 左鏡片（淚滴形）
             ctx.beginPath();
-            ctx.ellipse(-width/4, 0, lensWidth/2, lensHeight/2, 0, 0, Math.PI * 2);
+            ctx.ellipse(-width/4, 0, lensWidth/2, lensHeight/2, 0, 0, Math.PI * 2.3);
             ctx.fill();
             ctx.stroke();
             
             // 右鏡片
             ctx.beginPath();
-            ctx.ellipse(width/4, 0, lensWidth/2, lensHeight/2, 0, 0, Math.PI * 2);
+            ctx.ellipse(width/4, 0, lensWidth/2, lensHeight/2, 0, 0, Math.PI * 2.3);
             ctx.fill();
             ctx.stroke();
             
