@@ -494,49 +494,127 @@
         }
         
         // ==================== 更新眼鏡位置 ====================
-        function updateGlassesPosition(landmarks) {
-            if (!glassesModel) return;
-            
-            glassesModel.visible = true;
-            
-            const leftEyeOuter = landmarks[33];
-            const rightEyeOuter = landmarks[263];
-            const leftEyeInner = landmarks[133];
-            const rightEyeInner = landmarks[362];
-            const noseTip = landmarks[1];
-            
-            const centerX = (leftEyeOuter.x + rightEyeOuter.x) / 2;
-            const centerY = (leftEyeOuter.y + rightEyeOuter.y) / 2;
-            const centerZ = (leftEyeOuter.z + rightEyeOuter.z) / 2;
-            
-            const videoAspect = video.videoWidth / video.videoHeight;
-            const x = (centerX - 0.5) * 2 * videoAspect;
-            const y = -(centerY - 0.5) * 2;
-            const z = -0.5;
-            
-            glassesModel.position.set(x, y, z);
-            
-            const roll = Math.atan2(
-                rightEyeOuter.y - leftEyeOuter.y,
-                rightEyeOuter.x - leftEyeOuter.x
-            );
-            
-            const faceWidth = rightEyeInner.x - leftEyeInner.x;
-            const yaw = (faceWidth - 0.15) * 2;
-            
-            const pitch = -(centerY - noseTip.y) * 3;
-            
-            glassesModel.rotation.set(pitch, yaw, roll);
-            
-            const eyeDistance = Math.sqrt(
-                Math.pow((rightEyeOuter.x - leftEyeOuter.x) * videoAspect, 2) +
-                Math.pow(rightEyeOuter.y - leftEyeOuter.y, 2)
-            );
-            
-            const baseScale = 1.6;
-            const scale = eyeDistance * baseScale;
-            glassesModel.scale.set(scale, scale, scale);
+// ==================== 平滑濾波器（減少抖動）====================
+class SmoothFilter {
+    constructor(smoothingFactor = 0.5) {
+        this.smoothingFactor = smoothingFactor;
+        this.previousValues = {
+            position: null,
+            rotation: null,
+            scale: null
+        };
+    }
+    
+    smooth(currentValue, key) {
+        if (!this.previousValues[key]) {
+            this.previousValues[key] = currentValue;
+            return currentValue;
         }
+        
+        if (Array.isArray(currentValue)) {
+            // 處理陣列（位置、旋轉）
+            const smoothed = currentValue.map((val, i) => {
+                return this.previousValues[key][i] + 
+                       (val - this.previousValues[key][i]) * this.smoothingFactor;
+            });
+            this.previousValues[key] = smoothed;
+            return smoothed;
+        } else {
+            // 處理單一數值（縮放）
+            const smoothed = this.previousValues[key] + 
+                           (currentValue - this.previousValues[key]) * this.smoothingFactor;
+            this.previousValues[key] = smoothed;
+            return smoothed;
+        }
+    }
+    
+    reset() {
+        this.previousValues = {
+            position: null,
+            rotation: null,
+            scale: null
+        };
+    }
+}
+
+// 建立平滑濾波器實例
+const smoothFilter = new SmoothFilter(0.3); // 0.3 = 較平滑，0.7 = 較靈敏
+
+// ==================== 更新眼鏡位置（改進版）====================
+function updateGlassesPosition(landmarks) {
+    if (!glassesModel) return;
+    
+    glassesModel.visible = true;
+    
+    // MediaPipe 關鍵特徵點
+    const leftEyeOuter = landmarks[33];    // 左眼外角
+    const rightEyeOuter = landmarks[263];  // 右眼外角
+    const leftEyeInner = landmarks[133];   // 左眼內角
+    const rightEyeInner = landmarks[362];  // 右眼內角
+    const noseTip = landmarks[1];          // 鼻尖
+    const leftEyeTop = landmarks[159];     // 左眼上方
+    const rightEyeTop = landmarks[386];    // 右眼上方
+    
+    // ===== 計算中心位置 =====
+    const centerX = (leftEyeOuter.x + rightEyeOuter.x) / 2;
+    const centerY = (leftEyeOuter.y + rightEyeOuter.y) / 2;
+    const centerZ = (leftEyeOuter.z + rightEyeOuter.z) / 2;
+    
+    // ===== 座標轉換（MediaPipe → Three.js）=====
+    const videoAspect = video.videoWidth / video.videoHeight;
+    
+    // 原始位置計算
+    const rawX = (centerX - 0.5) * 2 * videoAspect;
+    const rawY = -(centerY - 0.5) * 2;
+    
+    // ⭐ 調整深度：改成更近的距離
+    const rawZ = -0.3;  // 原本是 -0.5，現在改成 -0.3（數字越小越近）
+    
+    // 應用平滑濾波
+    const smoothedPos = smoothFilter.smooth([rawX, rawY, rawZ], 'position');
+    glassesModel.position.set(smoothedPos[0], smoothedPos[1], smoothedPos[2]);
+    
+    // ===== 計算旋轉角度 =====
+    // Roll (左右歪頭)
+    const rawRoll = Math.atan2(
+        rightEyeOuter.y - leftEyeOuter.y,
+        rightEyeOuter.x - leftEyeOuter.x
+    );
+    
+    // Yaw (左右轉頭) - 改進版
+    const faceWidth = rightEyeInner.x - leftEyeInner.x;
+    const normalizedWidth = faceWidth / videoAspect;
+    const rawYaw = (normalizedWidth - 0.1) * 1.5;
+    
+    // Pitch (上下點頭) - 改進版
+    const eyeToNose = centerY - noseTip.y;
+    const rawPitch = -eyeToNose * 2.5;
+    
+    // 應用平滑濾波到旋轉
+    const smoothedRot = smoothFilter.smooth([rawPitch, rawYaw, rawRoll], 'rotation');
+    glassesModel.rotation.set(smoothedRot[0], smoothedRot[1], smoothedRot[2]);
+    
+    // ===== 計算縮放（穩定版）=====
+    const eyeDistance = Math.sqrt(
+        Math.pow((rightEyeOuter.x - leftEyeOuter.x) * videoAspect, 2) +
+        Math.pow(rightEyeOuter.y - leftEyeOuter.y, 2)
+    );
+    
+    // ⭐ 調整縮放係數：可以讓眼鏡更大或更小
+    const baseScale = 1.8;  // 原本是 1.6，稍微放大一點
+    const rawScale = eyeDistance * baseScale;
+    
+    // 應用平滑濾波到縮放
+    const smoothedScale = smoothFilter.smooth(rawScale, 'scale');
+    glassesModel.scale.set(smoothedScale, smoothedScale, smoothedScale);
+    
+    // ===== 除錯資訊（可選）=====
+    if (frameCount % 30 === 0) {
+        console.log('深度 Z:', smoothedPos[2].toFixed(3), '縮放:', smoothedScale.toFixed(3));
+    }
+}
+
+ 
         
         // ==================== 按鈕事件 ====================
         document.getElementById('model1').addEventListener('click', () => {
