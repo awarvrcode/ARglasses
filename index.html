@@ -581,19 +581,19 @@
             
             // ===== 計算旋轉（改進版）=====
             // Roll - 左右歪頭
-            const rawRoll = Math.atan2(
+            const rawRoll = -Math.atan2(
                 rightEyeOuter.y - leftEyeOuter.y,
                 rightEyeOuter.x - leftEyeOuter.x
             );
             
             // Yaw - 左右轉頭（使用 z 深度差異）
             const zDiff = rightEyeOuter.z - leftEyeOuter.z;
-            const rawYaw = Math.atan(zDiff / ((rightEyeOuter.x - leftEyeOuter.x) * videoAspect));
+            const rawYaw = -Math.atan(zDiff / ((rightEyeOuter.x - leftEyeOuter.x) * videoAspect));
             
             // Pitch - 上下點頭
             const noseToEyeY = centerY - noseTip.y;
             const noseToEyeZ = centerZ - noseTip.z;
-            const rawPitch = Math.atan2(noseToEyeY, Math.abs(noseToEyeZ)) * 0.5;
+            const rawPitch = -Math.atan2(noseToEyeY, Math.abs(noseToEyeZ)) * 0.5;
             
             // 平滑旋轉
             const smoothedRot = smoothFilter.smooth(
@@ -616,7 +616,7 @@
             
             // 根據深度調整縮放
             const depthFactor = 1.0 / (1.0 - rawZ * 0.5);
-            const baseScale = 10.1;
+            const baseScale = 5.1;
             const rawScale = eyeDistance * baseScale * depthFactor;
             
             // 平滑縮放
