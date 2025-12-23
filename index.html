@@ -515,7 +515,7 @@ function updateGlassesPosition(landmarks) {
     const depthScale = 1.2;  // 從 2.0 降低到 1.2
     const rawZ = centerZ * depthScale;
     
-    const distance = 0.15;
+    const distance = 0.3;
     
     // ⭐ 改進：使用固定深度基準計算 X/Y，避免深度交叉影響
     const depthAdjustment = 1.0 + rawZ * 0.3;  // 輕微的深度透視補償
