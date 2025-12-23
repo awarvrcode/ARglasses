@@ -562,7 +562,7 @@
             const rawZ = centerZ * depthScale;
             
             // 應用視角比例校正
-            const distance = 0.5;  // 基礎距離
+            const distance = 0.3;  // 基礎距離
             const correctedX = rawX * videoAspect * (distance - rawZ);
             const correctedY = rawY * (distance - rawZ);
             const correctedZ = rawZ - distance;
@@ -616,7 +616,7 @@
             
             // 根據深度調整縮放
             const depthFactor = 1.0 / (1.0 - rawZ * 0.5);
-            const baseScale = 2.1;
+            const baseScale = 3.1;
             const rawScale = eyeDistance * baseScale * depthFactor;
             
             // 平滑縮放
