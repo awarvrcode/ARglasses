@@ -296,7 +296,7 @@
         }
         
         function drawRoundSunglasses(width, height) {
-            const radius = width * 0.25;
+            const radius = width * 0.23;
             
             ctx.strokeStyle = '#8B4513'; // 棕色框
             ctx.lineWidth = 5;
@@ -304,13 +304,13 @@
             
             // 左鏡片
             ctx.beginPath();
-            ctx.arc(-width/4, 0, radius, 0, Math.PI * 2.2);
+            ctx.arc(-width/4, 0, radius, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
             
             // 右鏡片
             ctx.beginPath();
-            ctx.arc(width/4, 0, radius, 0, Math.PI * 2.2);
+            ctx.arc(width/4, 0, radius, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
             
