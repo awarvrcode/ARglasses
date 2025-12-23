@@ -529,33 +529,30 @@
         }
         
         // ==================== 更新眼鏡位置（完全重寫）====================
-// ==================== 更新眼鏡位置（激進拉近）====================
+// ==================== 更新眼鏡位置（超級近）====================
 function updateGlassesPosition(landmarks) {
     if (!glassesModel) return;
     
     glassesModel.visible = true;
     
-    // ===== 關鍵特徵點 =====
-    const leftEyeCenter = landmarks[468];
-    const rightEyeCenter = landmarks[473];
     const leftEyeOuter = landmarks[33];
     const rightEyeOuter = landmarks[263];
+    const leftEyeCenter = landmarks[468];
+    const rightEyeCenter = landmarks[473];
     const noseBridge = landmarks[6];
     
-    // ===== 計算眼鏡中心位置 =====
     const centerX = (leftEyeOuter.x + rightEyeOuter.x) / 2;
     const centerY = (leftEyeOuter.y + rightEyeOuter.y) / 2;
     
-    // ===== 座標轉換 =====
     const videoAspect = video.videoWidth / video.videoHeight;
     
     const rawX = (centerX - 0.5) * 2;
     const rawY = -(centerY - 0.5) * 2;
     
-    // ⭐⭐⭐ 版本 1：Z = 0（幾乎貼在臉上）⭐⭐⭐
-    const correctedX = rawX * videoAspect * 0.5;
-    const correctedY = rawY * 0.5;
-    const correctedZ = 0;  // 改成 0
+    // ⭐⭐⭐ 版本 2：正值 Z（穿過臉）⭐⭐⭐
+    const correctedX = rawX * videoAspect * 0.45;
+    const correctedY = rawY * 0.45;
+    const correctedZ = 0.05;  // 正值！
     
     const smoothedPos = smoothFilter.smooth(
         [correctedX, correctedY, correctedZ], 
@@ -568,7 +565,7 @@ function updateGlassesPosition(landmarks) {
         smoothedPos[2]
     );
     
-    // ===== 旋轉 =====
+    // 旋轉
     const rawRoll = -Math.atan2(
         rightEyeOuter.y - leftEyeOuter.y,
         rightEyeOuter.x - leftEyeOuter.x
@@ -591,18 +588,23 @@ function updateGlassesPosition(landmarks) {
         smoothedRot[2]
     );
     
-    // ===== 縮放 =====
+    // 縮放
     const eyeDistanceRaw = Math.abs(rightEyeOuter.x - leftEyeOuter.x);
-    const baseScale = 6.0;  // 增加到 6.0
+    const baseScale = 7.0;  // 更大
     const rawScale = eyeDistanceRaw * baseScale;
     
     const smoothedScale = smoothFilter.smooth(rawScale, 'scale');
     glassesModel.scale.set(smoothedScale, smoothedScale, smoothedScale);
     
     if (frameCount % 60 === 0) {
-        console.log('版本1 - Z=0 | 位置:', smoothedPos.map(v => v.toFixed(3)));
+        console.log('版本2 - Z=0.05 | 位置:', smoothedPos.map(v => v.toFixed(3)));
     }
 }
+
+
+
+
+
 
 
         
