@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 虛擬太陽眼鏡 - Three.js</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        #output {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 20px;
+            text-align: center;
+            background: rgba(0,0,0,0.7);
+            padding: 20px 40px;
+            border-radius: 10px;
+            z-index: 1000;
+        }
+        
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+        
+        button {
+            padding: 12px 24px;
+            background: rgba(255,255,255,0.9);
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        
+        button:hover {
+            background: white;
+            transform: scale(1.05);
+        }
+        
+        button.active {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div class="loading" id="loading">
+            載入中...<br>
+            <small>正在載入 AI 和 3D 模型</small>
+        </div>
+        
+        <video id="video" playsinline></video>
+        <canvas id="output"></canvas>
+        
+        <div class="controls">
+            <button id="model1" class="active">經典款</button>
+            <button id="model2">飛行員</button>
+            <button id="model3">圓框</button>
+        </div>
+        
+        <div class="info" id="info">FPS: --</div>
+    </div>
+
+    <!-- MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+    
+    <!-- Three.js -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <script>
+        // ========== 全域變數 ==========
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('output');
+        const loading = document.getElementById('loading');
+        const infoDiv = document.getElementById('info');
+        
+        let scene, camera, renderer, glassesModel;
+        let currentModel = 'classic';
+        let lastTime = Date.now();
+        let frameCount = 0;
+        
+        // 3D 模型路徑（需要替換為你的模型路徑）
+        const modelPaths = {
+            classic: 'models/sunglasses_classic.glb',    // 替換為實際路徑
+            aviator: 'models/heart_glasses.glb',    // 替換為實際路徑
+            round: 'models/ray_ban_glasses.glb'         // 替換為實際路徑
+        };
+        
+        // ========== Three.js 場景設定 ==========
+        function initThreeJS() {
+            // 建立場景
+            scene = new THREE.Scene();
+            
+            // 建立相機（透視相機）
+            camera = new THREE.PerspectiveCamera(
+                63,  // FOV
+                window.innerWidth / window.innerHeight,
+                0.1,
+                1000
+            );
+            camera.position.z = 1;
+            
+            // 建立渲染器
+            renderer = new THREE.WebGLRenderer({
+                canvas: canvas,
+                alpha: true,
+                antialias: true
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x000000, 0); // 透明背景
+            
+            // 添加光源
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight.position.set(0, 1, 1);
+            scene.add(directionalLight);
+            
+            console.log('Three.js 初始化完成');
+        }
+        
+        // ========== 載入 3D 模型 ==========
+        function loadGlassesModel(modelPath) {
+            return new Promise((resolve, reject) => {
+                const loader = new THREE.GLTFLoader();
+                
+                loader.load(
+                    modelPath,
+                    (gltf) => {
+                        console.log('模型載入成功:', modelPath);
+                        resolve(gltf.scene);
+                    },
+                    (progress) => {
+                        console.log('載入進度:', (progress.loaded / progress.total * 100).toFixed(2) + '%');
+                    },
+                    (error) => {
+                        console.error('模型載入失敗:', error);
+                        reject(error);
+                    }
+                );
+            });
+        }
+        
+        // ========== 初始化載入模型 ==========
+        async function initModels() {
+            try {
+                // 載入預設模型
+                glassesModel = await loadGlassesModel(modelPaths.classic);
+                
+                // 調整模型大小和位置
+                glassesModel.scale.set(0.01, 0.01, 0.01); // 根據模型調整
+                scene.add(glassesModel);
+                
+                console.log('初始模型載入完成');
+            } catch (error) {
+                console.error('模型載入失敗:', error);
+                // 如果模型載入失敗，使用簡單的幾何體替代
+                createFallbackGlasses();
+            }
+        }
+        
+        // ========== 備用：建立簡單幾何眼鏡 ==========
+        function createFallbackGlasses() {
+            console.log('使用備用幾何眼鏡');
+            glassesModel = new THREE.Group();
+            
+            // 鏡框材質
+            const frameMaterial = new THREE.MeshPhongMaterial({
+                color: 0x000000,
+                shininess: 100
+            });
+            
+            // 鏡片材質
+            const lensMaterial = new THREE.MeshPhongMaterial({
+                color: 0x333333,
+                transparent: true,
+                opacity: 0.7,
+                shininess: 100
+            });
+            
+            // 左鏡片
+            const leftLens = new THREE.Mesh(
+                new THREE.BoxGeometry(0.15, 0.1, 0.01),
+                lensMaterial
+            );
+            leftLens.position.set(-0.1, 0, 0);
+            glassesModel.add(leftLens);
+            
+            // 左鏡框
+            const leftFrame = new THREE.Mesh(
+                new THREE.TorusGeometry(0.08, 0.01, 16, 32),
+                frameMaterial
+            );
+            leftFrame.position.set(-0.1, 0, 0);
+            leftFrame.rotation.x = Math.PI / 2;
+            glassesModel.add(leftFrame);
+            
+            // 右鏡片
+            const rightLens = new THREE.Mesh(
+                new THREE.BoxGeometry(0.15, 0.1, 0.01),
+                lensMaterial
+            );
+            rightLens.position.set(0.1, 0, 0);
+            glassesModel.add(rightLens);
+            
+            // 右鏡框
+            const rightFrame = new THREE.Mesh(
+                new THREE.TorusGeometry(0.08, 0.01, 16, 32),
+                frameMaterial
+            );
+            rightFrame.position.set(0.1, 0, 0);
+            rightFrame.rotation.x = Math.PI / 2;
+            glassesModel.add(rightFrame);
+            
+            // 鼻樑
+            const bridge = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.01, 0.01, 0.05),
+                frameMaterial
+            );
+            bridge.rotation.z = Math.PI / 2;
+            glassesModel.add(bridge);
+            
+            scene.add(glassesModel);
+        }
+        
+        // ========== MediaPipe Face Mesh 設定 ==========
+        const faceMesh = new FaceMesh({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+            }
+        });
+        
+        faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        
+        faceMesh.onResults(onResults);
+        
+        // ========== 處理 Face Mesh 結果 ==========
+        function onResults(results) {
+            if (loading.style.display !== 'none') {
+                loading.style.display = 'none';
+            }
+            
+            // 更新 FPS
+            frameCount++;
+            const now = Date.now();
+            if (now - lastTime > 1000) {
+                infoDiv.textContent = `FPS: ${frameCount}`;
+                frameCount = 0;
+                lastTime = now;
+            }
+            
+            // 如果偵測到臉部
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                const landmarks = results.multiFaceLandmarks[0];
+                updateGlassesPosition(landmarks);
+            } else {
+                // 沒有偵測到臉部，隱藏眼鏡
+                if (glassesModel) {
+                    glassesModel.visible = false;
+                }
+            }
+            
+            // 渲染 Three.js 場景
+            renderer.render(scene, camera);
+        }
+        
+        // ========== 更新眼鏡位置和旋轉 ==========
+        function updateGlassesPosition(landmarks) {
+            if (!glassesModel) return;
+            
+            glassesModel.visible = true;
+            
+            // 關鍵特徵點
+            const leftEye = landmarks[33];      // 左眼外角
+            const rightEye = landmarks[263];    // 右眼外角
+            const noseTip = landmarks[1];       // 鼻尖
+            const foreheadCenter = landmarks[10]; // 額頭中心
+            
+            // 計算眼鏡中心位置
+            const centerX = (leftEye.x + rightEye.x) / 2;
+            const centerY = (leftEye.y + rightEye.y) / 2;
+            const centerZ = (leftEye.z + rightEye.z) / 2;
+            
+            // 轉換座標系（MediaPipe 是 0-1，Three.js 是 -1 到 1）
+            const x = (centerX - 0.5) * 2;
+            const y = -(centerY - 0.5) * 2; // Y 軸反轉
+            const z = centerZ * -5;
+            
+            glassesModel.position.set(x, y, z);
+            
+            // 計算旋轉角度
+            // Yaw (左右轉頭)
+            const yaw = Math.atan2(
+                rightEye.x - leftEye.x,
+                rightEye.z - leftEye.z
+            );
+            
+            // Pitch (上下點頭)
+            const pitch = Math.atan2(
+                noseTip.y - centerY,
+                noseTip.z - centerZ
+            );
+            
+            // Roll (左右歪頭)
+            const roll = Math.atan2(
+                rightEye.y - leftEye.y,
+                rightEye.x - leftEye.x
+            );
+            
+            glassesModel.rotation.set(pitch, yaw, roll);
+            
+            // 計算縮放（根據眼睛距離）
+            const eyeDistance = Math.sqrt(
+                Math.pow(rightEye.x - leftEye.x, 2) +
+                Math.pow(rightEye.y - leftEye.y, 2)
+            );
+            const scale = eyeDistance * 3; // 調整這個數值來改變眼鏡大小
+            glassesModel.scale.set(scale, scale, scale);
+        }
+        
+        // ========== 切換模型 ==========
+        async function switchModel(modelType) {
+            currentModel = modelType;
+            
+            // 移除舊模型
+            if (glassesModel) {
+                scene.remove(glassesModel);
+            }
+            
+            // 載入新模型
+            try {
+                glassesModel = await loadGlassesModel(modelPaths[modelType]);
+                scene.add(glassesModel);
+            } catch (error) {
+                console.error('切換模型失敗:', error);
+                createFallbackGlasses();
+            }
+        }
+        
+        // ========== 按鈕事件 ==========
+        document.getElementById('model1').addEventListener('click', () => {
+            switchModel('classic');
+            updateActiveButton('model1');
+        });
+        
+        document.getElementById('model2').addEventListener('click', () => {
+            switchModel('aviator');
+            updateActiveButton('model2');
+        });
+        
+        document.getElementById('model3').addEventListener('click', () => {
+            switchModel('round');
+            updateActiveButton('model3');
+        });
+        
+        function updateActiveButton(activeId) {
+            document.querySelectorAll('button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById(activeId).classList.add('active');
+        }
+        
+        // ========== 視窗大小調整 ==========
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        // ========== 初始化和啟動 ==========
+        async function init() {
+            // 初始化 Three.js
+            initThreeJS();
+            
+            // 載入模型
+            await initModels();
+            
+            // 啟動相機
+            const cameraInstance = new Camera(video, {
+                onFrame: async () => {
+                    await faceMesh.send({image: video});
+                },
+                width: 1280,
+                height: 720,
+                facingMode: 'user'
+            });
+            
+            cameraInstance.start().catch(err => {
+                loading.textContent = '無法訪問相機，請確認權限設定';
+                console.error('Camera error:', err);
+            });
+        }
+        
+        // 啟動應用
+        init();
+    </script>
+</body>
+</html>
+
+
