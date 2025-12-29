@@ -1,148 +1,498 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-TW">
 <head>
-    <meta charset="utf-8">
-    <title>WebAR: Nose Bridge Tracker</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>鼻樑追蹤測試 - MediaPipe</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; }
-        #video-container { position: relative; width: 100vw; height: 100vh; }
-        video { display: none; } /* 隱藏原始影片，由 Three.js 處理 */
-        canvas { position: absolute; top: 0; left: 0; }
-        #loading {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: white; font-family: Arial, sans-serif;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: #000;
+        }
+        
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+        
+        #output {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1);
+        }
+        
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 18px;
+            text-align: center;
+            background: rgba(0,0,0,0.8);
+            padding: 30px 50px;
+            border-radius: 15px;
+            z-index: 1000;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        
+        .loading small {
+            display: block;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #aaa;
+        }
+        
+        .controls {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+        
+        button {
+            padding: 14px 28px;
+            background: rgba(255,255,255,0.95);
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            color: #333;
+        }
+        
+        button:hover {
+            background: white;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        }
+        
+        button.active {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 100;
+            font-family: monospace;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        
+        .debug-info {
+            position: absolute;
+            top: 70px;
+            right: 20px;
+            background: rgba(0,0,0,0.8);
+            color: #0f0;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 12px;
+            z-index: 100;
+            font-family: monospace;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            max-width: 300px;
+        }
+        
+        @media (max-width: 768px) {
+            button {
+                padding: 12px 20px;
+                font-size: 14px;
+            }
+            
+            .controls {
+                bottom: 20px;
+                gap: 8px;
+            }
         }
     </style>
 </head>
 <body>
-
-<div id="loading">正在載入 AI 模型...</div>
-<div id="video-container">
-    <video id="webcam" autoplay playsinline></video>
-</div>
-
-<script type="importmap">
-    {
-        "imports": {
-            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-        }
-    }
-</script>
-
-<script type="module">
-    import * as THREE from 'three';
-    import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
-
-    const video = document.getElementById('webcam');
-    const loadingDiv = document.getElementById('loading');
-    let faceLandmarker;
-    let lastVideoTime = -1;
-
-    // Three.js 變數
-    let scene, camera, renderer, box;
-    let videoTexture, videoMesh;
-
-    async function init() {
-        // 1. 初始化 MediaPipe Face Landmarker
-        const filesetResolver = await FilesetResolver.forVisionTasks(
-            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
-        );
-        faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
-            baseOptions: {
-                modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task`,
-                delegate: "GPU"
-            },
-            outputFaceBlendshapes: true,
-            runningMode: "VIDEO",
-            numFaces: 1
-        });
-
-        // 2. 啟動攝影機
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { width: 1280, height: 720 }, 
-            audio: false 
-        });
-        video.srcObject = stream;
-        video.addEventListener('loadeddata', setupThreeJS);
-    }
-
-    function setupThreeJS() {
-        // 3. 初始化 Three.js 場景
-        scene = new THREE.Scene();
+    <div id="container">
+        <div class="loading" id="loading">
+            載入中...<br>
+            <small>正在初始化相機和 AI 模型</small>
+        </div>
         
-        const aspect = video.videoWidth / video.videoHeight;
-        camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
-        camera.position.z = 5;
+        <video id="video" playsinline autoplay></video>
+        <canvas id="output"></canvas>
+        
+        <div class="controls">
+            <button id="toggleBox" class="active">顯示盒子</button>
+            <button id="toggleDebug">除錯資訊</button>
+        </div>
+        
+        <div class="info" id="info">FPS: --</div>
+        <div class="debug-info" id="debugInfo" style="display: none;">
+            位置: --<br>
+            旋轉: --<br>
+            縮放: --
+        </div>
+    </div>
 
-        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.getElementById('video-container').appendChild(renderer.domElement);
+    <!-- MediaPipe CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    
+    <!-- Three.js -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js" crossorigin="anonymous"></script>
 
-        // 建立背景影片 Plane
-        videoTexture = new THREE.VideoTexture(video);
-        const geometry = new THREE.PlaneGeometry(aspect * 7.5, 7.5); // 根據距離調整比例
-        const material = new THREE.MeshBasicMaterial({ map: videoTexture });
-        videoMesh = new THREE.Mesh(geometry, material);
-        videoMesh.position.z = -2; // 放在背景
-        scene.add(videoMesh);
-
-        // 建立鼻樑上的小方塊
-        const boxGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-        const boxMat = new THREE.MeshNormalMaterial(); // 使用法線材質，方便觀察旋轉
-        box = new THREE.Mesh(boxGeo, boxMat);
-        scene.add(box);
-
-        loadingDiv.style.display = 'none';
-        render();
-    }
-
-    function render() {
-        if (video.currentTime !== lastVideoTime) {
-            lastVideoTime = video.currentTime;
-            const results = faceLandmarker.detectForVideo(video, performance.now());
-
-            if (results.faceLandmarks && results.faceLandmarks.length > 0) {
-                const landmarks = results.faceLandmarks[0];
-
-                // 點 6 是鼻樑 (Bridge of the nose)
-                const noseBridge = landmarks[6];
+    <script>
+        // ==================== 全域變數 ====================
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('output');
+        const loading = document.getElementById('loading');
+        const infoDiv = document.getElementById('info');
+        const debugInfoDiv = document.getElementById('debugInfo');
+        
+        let scene, camera, renderer, noseBridgeBox;
+        let lastTime = Date.now();
+        let frameCount = 0;
+        let showBox = true;
+        let showDebug = false;
+        
+        // ==================== 平滑濾波器 ====================
+        class SmoothFilter {
+            constructor(smoothingFactor = 0.4) {
+                this.smoothingFactor = smoothingFactor;
+                this.previousValues = {};
+            }
+            
+            smooth(currentValue, key) {
+                if (!this.previousValues[key]) {
+                    this.previousValues[key] = currentValue;
+                    return currentValue;
+                }
                 
-                // 座標轉換 (MediaPipe 0~1 轉為 Three.js 世界座標)
-                // 我們假設 Plane 高度為 7.5，寬度為 7.5 * aspect
-                const aspect = video.videoWidth / video.videoHeight;
-                const x = (noseBridge.x - 0.5) * (aspect * 7.5);
-                const y = -(noseBridge.y - 0.5) * 7.5;
-                const z = -noseBridge.z * 5; // Z 軸縮放視感
-
-                box.position.set(x, y, z);
-
-                // 計算旋轉 (簡單版：利用鼻尖與額頭計算 Up Vector)
-                // 點 1 (鼻尖), 點 10 (額頭), 點 152 (下巴)
-                const top = landmarks[10];
-                const bottom = landmarks[152];
-                const left = landmarks[234]; // 左耳側
-                const right = landmarks[454]; // 右耳側
-
-                // 簡單的角度估算
-                box.rotation.z = Math.atan2(right.y - left.y, right.x - left.x);
-                box.rotation.y = (noseBridge.x - 0.5) * 2; // 左右轉動補償
-                box.rotation.x = (noseBridge.y - 0.5) * 2; // 上下轉動補償
+                if (Array.isArray(currentValue)) {
+                    const smoothed = currentValue.map((val, i) => {
+                        return this.previousValues[key][i] + 
+                               (val - this.previousValues[key][i]) * this.smoothingFactor;
+                    });
+                    this.previousValues[key] = smoothed;
+                    return smoothed;
+                } else {
+                    const smoothed = this.previousValues[key] + 
+                                   (currentValue - this.previousValues[key]) * this.smoothingFactor;
+                    this.previousValues[key] = smoothed;
+                    return smoothed;
+                }
             }
         }
-
-        renderer.render(scene, camera);
-        requestAnimationFrame(render);
-    }
-
-    window.addEventListener('resize', () => {
-        if (!camera) return;
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-
-    init();
-</script>
+        
+        const smoothFilter = new SmoothFilter(0.4);
+        
+        // ==================== Three.js 場景設定 ====================
+        function initThreeJS() {
+            console.log('初始化 Three.js...');
+            
+            scene = new THREE.Scene();
+            
+            const aspect = window.innerWidth / window.innerHeight;
+            camera = new THREE.PerspectiveCamera(63, aspect, 0.01, 1000);
+            camera.position.set(0, 0, 0);
+            
+            renderer = new THREE.WebGLRenderer({
+                canvas: canvas,
+                alpha: true,
+                antialias: true
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setClearColor(0x000000, 0);
+            
+            // 光源設置
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+            scene.add(ambientLight);
+            
+            const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight1.position.set(0, 1, 1);
+            scene.add(directionalLight1);
+            
+            const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
+            directionalLight2.position.set(-1, 0, 0.5);
+            scene.add(directionalLight2);
+            
+            // 創建並添加鼻樑測試盒
+            noseBridgeBox = createNoseBridgeBox();
+            scene.add(noseBridgeBox);
+            
+            console.log('✓ Three.js 初始化完成');
+        }
+        
+        // ==================== 建立鼻樑測試盒 ====================
+        function createNoseBridgeBox() {
+            // 創建一個小立方體
+            const geometry = new THREE.BoxGeometry(0.02, 0.015, 0.01);
+            
+            // 使用鮮豔的材質方便觀察
+            const material = new THREE.MeshPhongMaterial({
+                color: 0x00ff00,  // 綠色
+                transparent: true,
+                opacity: 0.7,
+                shininess: 100
+            });
+            
+            const box = new THREE.Mesh(geometry, material);
+            
+            // 添加邊框線，更容易看清楚
+            const edges = new THREE.EdgesGeometry(geometry);
+            const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
+            const wireframe = new THREE.LineSegments(edges, lineMaterial);
+            box.add(wireframe);
+            
+            return box;
+        }
+        
+        // ==================== MediaPipe Face Mesh 設定 ====================
+        const faceMesh = new FaceMesh({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+            }
+        });
+        
+        faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        
+        faceMesh.onResults(onResults);
+        
+        // ==================== 處理偵測結果 ====================
+        function onResults(results) {
+            if (loading.style.display !== 'none') {
+                loading.style.display = 'none';
+            }
+            
+            frameCount++;
+            const now = Date.now();
+            if (now - lastTime > 1000) {
+                infoDiv.textContent = `FPS: ${frameCount}`;
+                frameCount = 0;
+                lastTime = now;
+            }
+            
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                const landmarks = results.multiFaceLandmarks[0];
+                updateNoseBridgeBox(landmarks);
+            } else {
+                if (noseBridgeBox) {
+                    noseBridgeBox.visible = false;
+                }
+            }
+            
+            renderer.render(scene, camera);
+        }
+        
+        // ==================== 更新鼻樑盒子位置 ====================
+        function updateNoseBridgeBox(landmarks) {
+            if (!noseBridgeBox) return;
+            
+            noseBridgeBox.visible = showBox;
+            if (!showBox) return;
+            
+            // ===== 鼻樑關鍵特徵點 =====
+            const noseBridge = landmarks[6];      // 鼻樑中心
+            const noseTip = landmarks[1];         // 鼻尖
+            const leftEyeInner = landmarks[133];  // 左眼內角
+            const rightEyeInner = landmarks[362]; // 右眼內角
+            
+            // ===== 計算盒子位置 =====
+            const videoAspect = video.videoWidth / video.videoHeight;
+            
+            const boxX = (noseBridge.x - 0.5) * 2;
+            const boxY = -(noseBridge.y - 0.5) * 2;
+            const boxZ = noseBridge.z;
+            
+            // ⭐⭐⭐ 可調整的參數 ⭐⭐⭐
+            const DISTANCE = -0.02;      // 距離（調整這個讓盒子更近或更遠）
+            const XY_SCALE = 0.5;        // X/Y 縮放
+            const DEPTH_SCALE = 0.05;    // 深度影響
+            
+            const correctedX = boxX * videoAspect * XY_SCALE;
+            const correctedY = boxY * XY_SCALE;
+            const correctedZ = boxZ * DEPTH_SCALE + DISTANCE;
+            
+            // 平滑位置
+            const smoothedPos = smoothFilter.smooth(
+                [correctedX, correctedY, correctedZ], 
+                'boxPosition'
+            );
+            
+            noseBridgeBox.position.set(
+                smoothedPos[0],
+                smoothedPos[1],
+                smoothedPos[2]
+            );
+            
+            // ===== 計算旋轉（讓盒子跟隨臉部方向）=====
+            
+            // Roll - 左右歪頭
+            const rawRoll = -Math.atan2(
+                rightEyeInner.y - leftEyeInner.y,
+                rightEyeInner.x - leftEyeInner.x
+            );
+            
+            // Yaw - 左右轉頭
+            const eyeDistance = Math.abs(rightEyeInner.x - leftEyeInner.x);
+            const yawSensitivity = 0.4;
+            const rawYaw = (0.12 - eyeDistance) * yawSensitivity;
+            
+            // Pitch - 上下點頭
+            const noseToEyeY = noseBridge.y - ((leftEyeInner.y + rightEyeInner.y) / 2);
+            const pitchSensitivity = 0.3;
+            const rawPitch = noseToEyeY * pitchSensitivity;
+            
+            // 平滑旋轉
+            const smoothedRot = smoothFilter.smooth(
+                [rawPitch, rawYaw, rawRoll],
+                'boxRotation'
+            );
+            
+            noseBridgeBox.rotation.set(
+                smoothedRot[0],
+                smoothedRot[1],
+                smoothedRot[2]
+            );
+            
+            // ===== 計算縮放（根據臉部大小）=====
+            const faceWidth = Math.abs(rightEyeInner.x - leftEyeInner.x);
+            const scaleMultiplier = 8.0;  // 調整盒子大小
+            const boxScale = faceWidth * scaleMultiplier;
+            
+            const smoothedScale = smoothFilter.smooth(boxScale, 'boxScale');
+            noseBridgeBox.scale.set(smoothedScale, smoothedScale, smoothedScale);
+            
+            // 更新除錯資訊
+            if (showDebug) {
+                debugInfoDiv.innerHTML = `
+                    位置: [${smoothedPos.map(v => v.toFixed(3)).join(', ')}]<br>
+                    旋轉: [${smoothedRot.map(v => (v * 180 / Math.PI).toFixed(1)).join('°, ')}°]<br>
+                    縮放: ${smoothedScale.toFixed(3)}<br>
+                    臉寬: ${faceWidth.toFixed(4)}
+                `;
+            }
+            
+            // Console 除錯（每 2 秒）
+            if (frameCount % 120 === 0) {
+                console.log('═══════════════════════════');
+                console.log('🎁 鼻樑盒子狀態');
+                console.log('  位置 XYZ:', smoothedPos.map(v => v.toFixed(3)));
+                console.log('  旋轉 P/Y/R:', smoothedRot.map(v => (v * 180 / Math.PI).toFixed(1)) + '°');
+                console.log('  縮放:', smoothedScale.toFixed(3));
+                console.log('  臉寬:', faceWidth.toFixed(4));
+            }
+        }
+        
+        // ==================== 按鈕事件 ====================
+        document.getElementById('toggleBox').addEventListener('click', () => {
+            showBox = !showBox;
+            document.getElementById('toggleBox').classList.toggle('active');
+            if (noseBridgeBox) {
+                noseBridgeBox.visible = showBox;
+            }
+        });
+        
+        document.getElementById('toggleDebug').addEventListener('click', () => {
+            showDebug = !showDebug;
+            debugInfoDiv.style.display = showDebug ? 'block' : 'none';
+            document.getElementById('toggleDebug').classList.toggle('active');
+        });
+        
+        // ==================== 視窗大小調整 ====================
+        window.addEventListener('resize', () => {
+            const aspect = window.innerWidth / window.innerHeight;
+            camera.aspect = aspect;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        // ==================== 初始化啟動 ====================
+        async function init() {
+            console.log('🚀 開始初始化應用...');
+            
+            try {
+                if (typeof THREE === 'undefined') {
+                    throw new Error('Three.js 未載入');
+                }
+                if (typeof FaceMesh === 'undefined') {
+                    throw new Error('MediaPipe Face Mesh 未載入');
+                }
+                if (typeof Camera === 'undefined') {
+                    throw new Error('MediaPipe Camera 未載入');
+                }
+                
+                console.log('✓ 所有庫載入成功');
+                
+                initThreeJS();
+                
+                console.log('📷 啟動相機...');
+                const cameraInstance = new Camera(video, {
+                    onFrame: async () => {
+                        await faceMesh.send({image: video});
+                    },
+                    width: 1280,
+                    height: 720,
+                    facingMode: 'user'
+                });
+                
+                await cameraInstance.start();
+                console.log('✓ 相機啟動成功');
+                
+            } catch (error) {
+                console.error('❌ 初始化失敗:', error);
+                loading.innerHTML = `
+                    初始化失敗<br>
+                    <small>${error.message}</small><br>
+                    <small style="margin-top:10px;display:block">請重新整理頁面</small>
+                `;
+            }
+        }
+        
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    </script>
 </body>
 </html>
