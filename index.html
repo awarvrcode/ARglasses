@@ -368,21 +368,23 @@
         }
         
         // ==================== 更新鼻樑盒子位置（統一座標顯示）====================
-      // ==================== 更新鼻樑盒子位置（改進轉頭追蹤）====================
+      // ==================== 更新鼻樑盒子位置（強化 Pitch 補償）====================
       function updateNoseBridgeBox(landmarks) {
           if (!noseBridgeBox) return;
 
           noseBridgeBox.visible = showBox;
           if (!showBox) return;
 
-          // ===== 鼻樑關鍵特徵點 =====
+          // ===== 關鍵特徵點 =====
           const noseBridge = landmarks[6];
+          const noseTip = landmarks[1];
           const leftEyeInner = landmarks[133];
           const rightEyeInner = landmarks[362];
           const leftEyeOuter = landmarks[33];
           const rightEyeOuter = landmarks[263];
+          const foreheadCenter = landmarks[10];
+          const chinBottom = landmarks[152];
 
-          // 記錄原始座標
           noseRawCoords = {
               x: noseBridge.x,
               y: noseBridge.y,
@@ -395,37 +397,55 @@
               z: noseBridge.z
           };
 
-          // ===== 改進的座標轉換 =====
+          // ===== 計算臉部旋轉狀態 =====
           const videoAspect = video.videoWidth / video.videoHeight;
 
-          // 基本 X/Y 轉換
+          // 1. Yaw 檢測（左右轉頭）
+          const eyeDistanceX = Math.abs(rightEyeInner.x - leftEyeInner.x);
+          const normalEyeDistance = 0.1;
+          const yawFactor = eyeDistanceX / normalEyeDistance;
+
+          // 2. 改進的 Pitch 檢測（使用多個指標）
+          const eyeCenterY = (leftEyeInner.y + rightEyeInner.y) / 2;
+          const noseToEyeY = noseBridge.y - eyeCenterY;
+
+          // 使用鼻尖 Z 和鼻樑 Z 的差異判斷 Pitch
+          const noseZDiff = Math.abs(noseTip.z - noseBridge.z);
+          const normalNoseZDiff = 0.02;
+          const pitchFromZ = noseZDiff / normalNoseZDiff;  // > 1.0 表示點頭或抬頭
+
+          // 使用額頭到下巴的 Y 距離判斷 Pitch
+          const faceHeightY = Math.abs(foreheadCenter.y - chinBottom.y);
+          const normalFaceHeight = 0.35;
+          const pitchFromHeight = faceHeightY / normalFaceHeight;
+
+          // 組合 Pitch 因子
+          const pitchFactor = (pitchFromZ + pitchFromHeight) / 2;
+
+          // ⭐⭐⭐ 強化補償因子 ⭐⭐⭐
+          const yawCompensation = Math.pow(Math.max(0.5, yawFactor), 0.5);
+          const pitchCompensation = 1.0 / Math.pow(Math.max(0.8, pitchFactor), 0.8);
+          const combinedCompensation = yawCompensation * pitchCompensation;
+
+          // 限制補償範圍（避免過度補償）
+          const clampedCompensation = Math.max(0.6, Math.min(1.2, combinedCompensation));
+
+          // ===== 計算位置 =====
           const rawX = (noseBridge.x - 0.5) * 2;
           const rawY = -(noseBridge.y - 0.5) * 2;
 
-          // ⭐⭐⭐ 關鍵改進：計算臉部旋轉角度來補償深度 ⭐⭐⭐
+          const XY_SCALE = 0.5;
+          const correctedX = rawX * videoAspect * XY_SCALE;
+          const correctedY = rawY * XY_SCALE;
 
-          // 1. 計算 Yaw（左右轉頭角度）
-          const eyeDistanceX = Math.abs(rightEyeInner.x - leftEyeInner.x);
-          const normalEyeDistance = 0.1;  // 正面時的標準眼距
-          const yawFactor = eyeDistanceX / normalEyeDistance;  // 轉頭時會變小
+          // ⭐⭐⭐ 深度計算（應用限制後的補償）⭐⭐⭐
+          const avgZ = (noseBridge.z + leftEyeInner.z + rightEyeInner.z + noseTip.z) / 4;
 
-          // 2. 計算臉部的 3D 深度（使用多個點的平均）
-          const avgZ = (noseBridge.z + leftEyeInner.z + rightEyeInner.z) / 3;
-
-          // 3. 深度補償（考慮轉頭因素）
           const BASE_DISTANCE = 0.28;
           const DEPTH_MULTIPLIER = 1.8;
 
-          // ⭐ 當臉部轉動時，減少深度的影響（避免飄移）
-          const rotationCompensation = Math.pow(yawFactor, 0.5);  // 平方根補償
-          const compensatedZ = avgZ * rotationCompensation;
-
+          const compensatedZ = avgZ * clampedCompensation;
           const dynamicZ = -BASE_DISTANCE - (compensatedZ * DEPTH_MULTIPLIER);
-
-          // 4. X/Y 位置也考慮轉頭補償
-          const XY_SCALE = 0.5;
-          const correctedX = rawX * videoAspect * XY_SCALE * yawFactor;
-          const correctedY = rawY * XY_SCALE;
 
           // 平滑處理
           const smoothedPos = smoothFilter.smooth(
@@ -448,7 +468,6 @@
           const yawSensitivity = 0.4;
           const rawYaw = (normalEyeDistance - eyeDistanceX) * yawSensitivity * 10;
 
-          const noseToEyeY = noseBridge.y - ((leftEyeInner.y + rightEyeInner.y) / 2);
           const pitchSensitivity = 0.3;
           const rawPitch = noseToEyeY * pitchSensitivity;
 
@@ -470,7 +489,6 @@
               Math.pow(eyeDistanceY, 2)
           );
 
-          // 深度補償縮放
           const depthFactor = 1.0 / (1.0 + avgZ * 1.8);
 
           const BASE_SCALE = 8.0;
@@ -485,15 +503,24 @@
           // 詳細調試信息
           if (frameCount % 60 === 0) {
               console.log('═══════════════════════════');
-              console.log('📍 鼻樑 Z:', noseBridge.z.toFixed(4));
-              console.log('📏 眼距比例:', yawFactor.toFixed(3), '(1.0 = 正面)');
-              console.log('🔄 旋轉補償:', rotationCompensation.toFixed(3));
-              console.log('📦 補償後 Z:', compensatedZ.toFixed(4));
-              console.log('📦 最終位置 Z:', smoothedPos[2].toFixed(4));
-              console.log('💡 眼距越小 = 轉頭越多 = 補償越強');
+              console.log('🔄 旋轉狀態：');
+              console.log('  Yaw 因子:', yawFactor.toFixed(3), yawFactor < 0.9 ? '(轉頭)' : '(正面)');
+              console.log('  Pitch Z 差:', pitchFromZ.toFixed(3));
+              console.log('  Pitch 高度:', pitchFromHeight.toFixed(3));
+              console.log('  Pitch 綜合:', pitchFactor.toFixed(3), pitchFactor > 1.1 ? '(點頭/抬頭)' : '(正面)');
+              console.log('---');
+              console.log('🛡️ 補償：');
+              console.log('  Yaw 補償:', yawCompensation.toFixed(3));
+              console.log('  Pitch 補償:', pitchCompensation.toFixed(3));
+              console.log('  組合補償:', combinedCompensation.toFixed(3));
+              console.log('  限制後:', clampedCompensation.toFixed(3));
+              console.log('---');
+              console.log('📦 最終：');
+              console.log('  原始 Z:', avgZ.toFixed(4));
+              console.log('  補償後 Z:', compensatedZ.toFixed(4));
+              console.log('  Box Z:', smoothedPos[2].toFixed(4));
           }
       }
-
         
         // ==================== 更新座標顯示（統一使用 MediaPipe 座標）====================
         function updateCoordinateDisplay(rotation, scale, threejsPos) {
