@@ -1,213 +1,148 @@
-<!doctype html>
-<html lang="zh-Hant">
+<!DOCTYPE html>
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>WebAR Nose Bridge Box (MediaPipe + Three.js)</title>
-  <style>
-    html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; }
-    #wrap { position: relative; width: 100vw; height: 100vh; }
-    video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-    /* video 在下，three canvas 在上 */
-    video { transform: scaleX(-1); }          /* 鏡像，像自拍 */
-    canvas#three { pointer-events: none; }
-    #hud {
-      position: absolute; left: 12px; top: 12px; color: #fff; font: 13px/1.4 system-ui, -apple-system, "Segoe UI";
-      background: rgba(0,0,0,.45); padding: 10px 12px; border-radius: 10px; max-width: 90vw;
-    }
-    #hud b { font-weight: 700; }
-  </style>
+    <meta charset="utf-8">
+    <title>WebAR: Nose Bridge Tracker</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        #video-container { position: relative; width: 100vw; height: 100vh; }
+        video { display: none; } /* 隱藏原始影片，由 Three.js 處理 */
+        canvas { position: absolute; top: 0; left: 0; }
+        #loading {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: white; font-family: Arial, sans-serif;
+        }
+    </style>
 </head>
 <body>
-  <div id="wrap">
-    <video id="video" playsinline autoplay muted></video>
-    <canvas id="three"></canvas>
-    <div id="hud">
-      <div><b>WebAR</b>：鼻樑貼附方盒（MediaPipe FaceMesh + Three.js）</div>
-      <div>若無法啟動相機：請用 <b>https</b> 或 <b>localhost</b> 開啟。</div>
-    </div>
-  </div>
 
-  <!-- Three.js (ESM) -->
-  <script type="module">
-    import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+<div id="loading">正在載入 AI 模型...</div>
+<div id="video-container">
+    <video id="webcam" autoplay playsinline></video>
+</div>
 
-    // MediaPipe FaceMesh (非 ESM，透過全域物件)
-    // 注意：使用 cdnjs / jsdelivr 都可，這裡選用官方風格的 jsdelivr
-    const mpFaceMeshScript = document.createElement("script");
-    mpFaceMeshScript.src = "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js";
-    document.head.appendChild(mpFaceMeshScript);
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+</script>
 
-    const mpCameraScript = document.createElement("script");
-    mpCameraScript.src = "https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js";
-    document.head.appendChild(mpCameraScript);
+<script type="module">
+    import * as THREE from 'three';
+    import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
 
-    // 等待 MediaPipe 腳本載入完成
-    await new Promise((res) => { mpFaceMeshScript.onload = res; });
-    await new Promise((res) => { mpCameraScript.onload = res; });
+    const video = document.getElementById('webcam');
+    const loadingDiv = document.getElementById('loading');
+    let faceLandmarker;
+    let lastVideoTime = -1;
 
-    const video = document.getElementById("video");
-    const canvas = document.getElementById("three");
+    // Three.js 變數
+    let scene, camera, renderer, box;
+    let videoTexture, videoMesh;
 
-    // 啟動相機
-    async function setupCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "user",
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
-        audio: false
-      });
-      video.srcObject = stream;
-      await video.play();
+    async function init() {
+        // 1. 初始化 MediaPipe Face Landmarker
+        const filesetResolver = await FilesetResolver.forVisionTasks(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+        );
+        faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+            baseOptions: {
+                modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task`,
+                delegate: "GPU"
+            },
+            outputFaceBlendshapes: true,
+            runningMode: "VIDEO",
+            numFaces: 1
+        });
+
+        // 2. 啟動攝影機
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { width: 1280, height: 720 }, 
+            audio: false 
+        });
+        video.srcObject = stream;
+        video.addEventListener('loadeddata', setupThreeJS);
     }
 
-    await setupCamera();
+    function setupThreeJS() {
+        // 3. 初始化 Three.js 場景
+        scene = new THREE.Scene();
+        
+        const aspect = video.videoWidth / video.videoHeight;
+        camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
+        camera.position.z = 5;
 
-    // Three.js：透明場景疊在 video 上
-    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    renderer.setSize(window.innerWidth, window.innerHeight, false);
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('video-container').appendChild(renderer.domElement);
 
-    const scene = new THREE.Scene();
+        // 建立背景影片 Plane
+        videoTexture = new THREE.VideoTexture(video);
+        const geometry = new THREE.PlaneGeometry(aspect * 7.5, 7.5); // 根據距離調整比例
+        const material = new THREE.MeshBasicMaterial({ map: videoTexture });
+        videoMesh = new THREE.Mesh(geometry, material);
+        videoMesh.position.z = -2; // 放在背景
+        scene.add(videoMesh);
 
-    // 2D overlay 用 OrthographicCamera（以像素座標為基準）
-    const camera = new THREE.OrthographicCamera(
-      -window.innerWidth / 2, window.innerWidth / 2,
-      window.innerHeight / 2, -window.innerHeight / 2,
-      -1000, 1000
-    );
-    camera.position.z = 10;
+        // 建立鼻樑上的小方塊
+        const boxGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+        const boxMat = new THREE.MeshNormalMaterial(); // 使用法線材質，方便觀察旋轉
+        box = new THREE.Mesh(boxGeo, boxMat);
+        scene.add(box);
 
-    // 建立鼻樑方盒（Three.js）
-    const boxGeo = new THREE.BoxGeometry(30, 30, 30);
-    const boxMat = new THREE.MeshNormalMaterial({ transparent: true, opacity: 0.95 });
-    const box = new THREE.Mesh(boxGeo, boxMat);
-    scene.add(box);
-
-    // 平滑參數（越大越跟手，越小越穩）
-    const SMOOTH_POS = 0.25;
-    const SMOOTH_ROT = 0.25;
-    const SMOOTH_SCL = 0.25;
-
-    // 儲存上一幀狀態
-    const state = {
-      x: 0, y: 0,
-      rotZ: 0,
-      scale: 1
-    };
-
-    function lerp(a, b, t) { return a + (b - a) * t; }
-
-    // 將 normalized landmark (0..1) 轉成「畫面像素座標」，並注意鏡像
-    function lmToScreen(lm, w, h) {
-      // 由於 video 做了 scaleX(-1)，我們也必須對 x 做鏡像才能對齊
-      const x = (1 - lm.x) * w;
-      const y = lm.y * h;
-      return { x, y };
+        loadingDiv.style.display = 'none';
+        render();
     }
 
-    // 估算兩點距離
-    function dist2(a, b) {
-      const dx = a.x - b.x, dy = a.y - b.y;
-      return Math.hypot(dx, dy);
+    function render() {
+        if (video.currentTime !== lastVideoTime) {
+            lastVideoTime = video.currentTime;
+            const results = faceLandmarker.detectForVideo(video, performance.now());
+
+            if (results.faceLandmarks && results.faceLandmarks.length > 0) {
+                const landmarks = results.faceLandmarks[0];
+
+                // 點 6 是鼻樑 (Bridge of the nose)
+                const noseBridge = landmarks[6];
+                
+                // 座標轉換 (MediaPipe 0~1 轉為 Three.js 世界座標)
+                // 我們假設 Plane 高度為 7.5，寬度為 7.5 * aspect
+                const aspect = video.videoWidth / video.videoHeight;
+                const x = (noseBridge.x - 0.5) * (aspect * 7.5);
+                const y = -(noseBridge.y - 0.5) * 7.5;
+                const z = -noseBridge.z * 5; // Z 軸縮放視感
+
+                box.position.set(x, y, z);
+
+                // 計算旋轉 (簡單版：利用鼻尖與額頭計算 Up Vector)
+                // 點 1 (鼻尖), 點 10 (額頭), 點 152 (下巴)
+                const top = landmarks[10];
+                const bottom = landmarks[152];
+                const left = landmarks[234]; // 左耳側
+                const right = landmarks[454]; // 右耳側
+
+                // 簡單的角度估算
+                box.rotation.z = Math.atan2(right.y - left.y, right.x - left.x);
+                box.rotation.y = (noseBridge.x - 0.5) * 2; // 左右轉動補償
+                box.rotation.x = (noseBridge.y - 0.5) * 2; // 上下轉動補償
+            }
+        }
+
+        renderer.render(scene, camera);
+        requestAnimationFrame(render);
     }
 
-    // FaceMesh 設定
-    const faceMesh = new FaceMesh.FaceMesh({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+    window.addEventListener('resize', () => {
+        if (!camera) return;
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    faceMesh.setOptions({
-      maxNumFaces: 1,
-      refineLandmarks: true,
-      minDetectionConfidence: 0.6,
-      minTrackingConfidence: 0.6
-    });
-
-    // 鼻樑定位：挑幾個較穩定的點做平均（可依需求微調）
-    // 常用參考：1/4/5/6/197/168 等附近點在鼻樑區域
-    const NOSE_BRIDGE_POINTS = [6, 197, 168, 5]; // 鼻樑上段（多點平均更穩）
-    const NOSE_UP = 168;   // 鼻樑靠上
-    const NOSE_DOWN = 4;   // 鼻尖/下方（用來估方向）
-
-    // 用臉寬估縮放：左右臉頰或眼角距離
-    const LEFT_CHEEK = 234;
-    const RIGHT_CHEEK = 454;
-
-    faceMesh.onResults((results) => {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-
-      if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
-        // 沒臉時把盒子藏到畫面外
-        box.position.set(99999, 99999, 0);
-        return;
-      }
-
-      const lm = results.multiFaceLandmarks[0];
-
-      // 鼻樑中心（多點平均）
-      let sx = 0, sy = 0;
-      for (const idx of NOSE_BRIDGE_POINTS) {
-        const p = lmToScreen(lm[idx], w, h);
-        sx += p.x; sy += p.y;
-      }
-      sx /= NOSE_BRIDGE_POINTS.length;
-      sy /= NOSE_BRIDGE_POINTS.length;
-
-      // 估旋轉：鼻樑上下兩點的方向（2D 角度）
-      const pUp = lmToScreen(lm[NOSE_UP], w, h);
-      const pDn = lmToScreen(lm[NOSE_DOWN], w, h);
-      const angle = Math.atan2(pDn.y - pUp.y, pDn.x - pUp.x) - Math.PI / 2;
-      // -PI/2：讓「向下」為 0 度，符合直覺
-
-      // 估縮放：臉寬越大代表越靠近鏡頭
-      const pL = lmToScreen(lm[LEFT_CHEEK], w, h);
-      const pR = lmToScreen(lm[RIGHT_CHEEK], w, h);
-      const faceWidth = dist2(pL, pR);
-      // 經驗值：以 300px 當作基準臉寬
-      const targetScale = THREE.MathUtils.clamp(faceWidth / 300, 0.5, 2.2);
-
-      // 平滑
-      state.x = lerp(state.x, sx - w / 2, SMOOTH_POS);
-      state.y = lerp(state.y, (h / 2) - sy, SMOOTH_POS); // Three 的 y 軸向上
-      state.rotZ = lerp(state.rotZ, angle, SMOOTH_ROT);
-      state.scale = lerp(state.scale, targetScale, SMOOTH_SCL);
-
-      // 更新盒子
-      box.position.set(state.x, state.y, 0);
-      box.rotation.set(0, 0, state.rotZ);
-      box.scale.setScalar(state.scale);
-    });
-
-    // 用 MediaPipe Camera Utils 持續送 frame
-    const cam = new CameraUtils.Camera(video, {
-      onFrame: async () => {
-        await faceMesh.send({ image: video });
-      },
-      width: 1280,
-      height: 720
-    });
-    cam.start();
-
-    // Render loop
-    function animate() {
-      renderer.render(scene, camera);
-      requestAnimationFrame(animate);
-    }
-    animate();
-
-    // Resize handling
-    window.addEventListener("resize", () => {
-      renderer.setSize(window.innerWidth, window.innerHeight, false);
-      camera.left = -window.innerWidth / 2;
-      camera.right = window.innerWidth / 2;
-      camera.top = window.innerHeight / 2;
-      camera.bottom = -window.innerHeight / 2;
-      camera.updateProjectionMatrix();
-    });
-  </script>
+    init();
+</script>
 </body>
 </html>
