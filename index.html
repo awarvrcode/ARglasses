@@ -368,93 +368,90 @@
         }
         
         // ==================== 更新鼻樑盒子位置（統一座標顯示）====================
-        function updateNoseBridgeBox(landmarks) {
-            if (!noseBridgeBox) return;
-            
-            noseBridgeBox.visible = showBox;
-            if (!showBox) return;
-            
-            // ===== 鼻樑關鍵特徵點 =====
-            const noseBridge = landmarks[6];
-            const leftEyeInner = landmarks[133];
-            const rightEyeInner = landmarks[362];
-            
-            // ⭐ 記錄鼻樑原始座標（MediaPipe 空間）
-            noseRawCoords = {
-                x: noseBridge.x,
-                y: noseBridge.y,
-                z: noseBridge.z
-            };
-            
-            // ⭐ 也記錄 Box 要使用的原始座標（設為完全相同）
-            boxRawCoords = {
-                x: noseBridge.x,  // 完全相同
-                y: noseBridge.y,  // 完全相同
-                z: noseBridge.z   // 完全相同
-            };
-            
-            // ===== 轉換到 Three.js 空間（只用於渲染）=====
-            const videoAspect = video.videoWidth / video.videoHeight;
-            
-            const boxX = (noseBridge.x - 0.5) * 2;
-            const boxY = -(noseBridge.y - 0.5) * 2;
-            
-            const XY_SCALE = 0.5;
-            const Z_OFFSET = -0.01;
-            
-            const correctedX = boxX * videoAspect * XY_SCALE;
-            const correctedY = boxY * XY_SCALE;
-            const correctedZ = noseBridge.z * 0.5 + Z_OFFSET;
-            
-            // 平滑位置
-            const smoothedPos = smoothFilter.smooth(
-                [correctedX, correctedY, correctedZ], 
-                'boxPosition'
-            );
-            
-            // ⭐ 設置 Three.js 位置（用於渲染）
-            noseBridgeBox.position.set(
-                smoothedPos[0],
-                smoothedPos[1],
-                smoothedPos[2]
-            );
-            
-            // ===== 計算旋轉 =====
-            const rawRoll = -Math.atan2(
-                rightEyeInner.y - leftEyeInner.y,
-                rightEyeInner.x - leftEyeInner.x
-            );
-            
-            const eyeDistance = Math.abs(rightEyeInner.x - leftEyeInner.x);
-            const yawSensitivity = 0.4;
-            const rawYaw = (0.12 - eyeDistance) * yawSensitivity;
-            
-            const noseToEyeY = noseBridge.y - ((leftEyeInner.y + rightEyeInner.y) / 2);
-            const pitchSensitivity = 0.3;
-            const rawPitch = noseToEyeY * pitchSensitivity;
-            
-            const smoothedRot = smoothFilter.smooth(
-                [rawPitch, rawYaw, rawRoll],
-                'boxRotation'
-            );
-            
-            noseBridgeBox.rotation.set(
-                smoothedRot[0],
-                smoothedRot[1],
-                smoothedRot[2]
-            );
-            
-            // ===== 計算縮放 =====
-            const faceWidth = Math.abs(rightEyeInner.x - leftEyeInner.x);
-            const scaleMultiplier = 8.0;
-            const boxScale = faceWidth * scaleMultiplier;
-            
-            const smoothedScale = smoothFilter.smooth(boxScale, 'boxScale');
-            noseBridgeBox.scale.set(smoothedScale, smoothedScale, smoothedScale);
-            
-            // ===== 更新座標顯示 =====
-            updateCoordinateDisplay(smoothedRot, smoothedScale, smoothedPos);
-        }
+       // ==================== 更新鼻樑盒子位置（強制可見版）====================
+function updateNoseBridgeBox(landmarks) {
+    if (!noseBridgeBox) return;
+    
+    noseBridgeBox.visible = showBox;
+    if (!showBox) return;
+    
+    // ===== 鼻樑關鍵特徵點 =====
+    const noseBridge = landmarks[6];
+    const leftEyeInner = landmarks[133];
+    const rightEyeInner = landmarks[362];
+    
+    // ⭐ 記錄鼻樑原始座標（MediaPipe 空間）
+    noseRawCoords = {
+        x: noseBridge.x,
+        y: noseBridge.y,
+        z: noseBridge.z
+    };
+    
+    // ⭐ Box 使用相同座標（顯示用）
+    boxRawCoords = {
+        x: noseBridge.x,
+        y: noseBridge.y,
+        z: noseBridge.z
+    };
+    
+    // ===== 轉換到 Three.js 空間 =====
+    const videoAspect = video.videoWidth / video.videoHeight;
+    
+    const boxX = (noseBridge.x - 0.5) * 2;
+    const boxY = -(noseBridge.y - 0.5) * 2;
+    
+    // ⭐⭐⭐ 強制可見參數 ⭐⭐⭐
+    const XY_SCALE = 0.5;
+    const Z_DISTANCE = -0.3;  // 固定距離，確保在相機前方
+    
+    const correctedX = boxX * videoAspect * XY_SCALE;
+    const correctedY = boxY * XY_SCALE;
+    const correctedZ = Z_DISTANCE;  // 使用固定距離
+    
+    // ⭐ 不使用平滑，直接設置（測試用）
+    noseBridgeBox.position.set(
+        correctedX,
+        correctedY,
+        correctedZ
+    );
+    
+    // ===== 計算旋轉 =====
+    const rawRoll = -Math.atan2(
+        rightEyeInner.y - leftEyeInner.y,
+        rightEyeInner.x - leftEyeInner.x
+    );
+    
+    const eyeDistance = Math.abs(rightEyeInner.x - leftEyeInner.x);
+    const yawSensitivity = 0.4;
+    const rawYaw = (0.12 - eyeDistance) * yawSensitivity;
+    
+    const noseToEyeY = noseBridge.y - ((leftEyeInner.y + rightEyeInner.y) / 2);
+    const pitchSensitivity = 0.3;
+    const rawPitch = noseToEyeY * pitchSensitivity;
+    
+    noseBridgeBox.rotation.set(rawPitch, rawYaw, rawRoll);
+    
+    // ===== 固定縮放（確保可見）=====
+    const FIXED_SCALE = 2.0;  // 固定大小
+    noseBridgeBox.scale.set(FIXED_SCALE, FIXED_SCALE, FIXED_SCALE);
+    
+    // ===== 更新座標顯示 =====
+    updateCoordinateDisplay(
+        [rawPitch, rawYaw, rawRoll], 
+        FIXED_SCALE, 
+        [correctedX, correctedY, correctedZ]
+    );
+    
+    // ===== Console 調試信息 =====
+    if (frameCount % 60 === 0) {
+        console.log('═══════════════════════════');
+        console.log('📍 鼻樑座標:', noseRawCoords);
+        console.log('📦 Box Three.js 位置:', { x: correctedX, y: correctedY, z: correctedZ });
+        console.log('👁️ Box 可見性:', noseBridgeBox.visible);
+        console.log('📏 Box 縮放:', FIXED_SCALE);
+        console.log('🎥 相機位置:', camera.position);
+    }
+}
         
         // ==================== 更新座標顯示（統一使用 MediaPipe 座標）====================
         function updateCoordinateDisplay(rotation, scale, threejsPos) {
