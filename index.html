@@ -410,7 +410,7 @@ function updateNoseBridgeBox(landmarks) {
     // 典型範圍：-0.15 到 0.15
     
     const BASE_DISTANCE = 0.3;        // 基礎距離
-    const DEPTH_MULTIPLIER = 2.0;     // 深度影響倍數
+    const DEPTH_MULTIPLIER = 1.5;     // 深度影響倍數
     
     // 動態計算深度
     const dynamicZ = -BASE_DISTANCE - (noseBridge.z * DEPTH_MULTIPLIER);
