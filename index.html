@@ -344,7 +344,7 @@
             const boxZ = noseBridge.z;
             
             // ⭐⭐⭐ 可調整的參數 ⭐⭐⭐
-            const DISTANCE = 0.005;      // 距離（調整這個讓盒子更近或更遠）
+            const DISTANCE = -0.03;      // 距離（調整這個讓盒子更近或更遠）
             const XY_SCALE = 0.3;        // X/Y 縮放
             const DEPTH_SCALE = 0.01;    // 深度影響
             
@@ -396,7 +396,7 @@
             
             // ===== 計算縮放（根據臉部大小）=====
             const faceWidth = Math.abs(rightEyeInner.x - leftEyeInner.x);
-            const scaleMultiplier = 8.0;  // 調整盒子大小
+            const scaleMultiplier = 4.0;  // 調整盒子大小
             const boxScale = faceWidth * scaleMultiplier;
             
             const smoothedScale = smoothFilter.smooth(boxScale, 'boxScale');
