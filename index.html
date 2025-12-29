@@ -368,17 +368,21 @@
         }
         
         // ==================== 更新鼻樑盒子位置（統一座標顯示）====================
-    // ==================== 更新鼻樑盒子位置（超大超近版）====================
+    // ==================== 更新鼻樑盒子位置（動態深度和縮放）====================
 function updateNoseBridgeBox(landmarks) {
     if (!noseBridgeBox) return;
     
     noseBridgeBox.visible = showBox;
     if (!showBox) return;
     
+    // ===== 鼻樑關鍵特徵點 =====
     const noseBridge = landmarks[6];
     const leftEyeInner = landmarks[133];
     const rightEyeInner = landmarks[362];
+    const leftEyeOuter = landmarks[33];
+    const rightEyeOuter = landmarks[263];
     
+    // ⭐ 記錄鼻樑原始座標
     noseRawCoords = {
         x: noseBridge.x,
         y: noseBridge.y,
@@ -391,40 +395,98 @@ function updateNoseBridgeBox(landmarks) {
         z: noseBridge.z
     };
     
-    // ===== 超簡單的轉換 =====
+    // ===== 計算 X, Y 位置 =====
     const videoAspect = video.videoWidth / video.videoHeight;
     
-    // 基本轉換
-    const boxX = (noseBridge.x - 0.5) * 2 * videoAspect * 0.5;
-    const boxY = -(noseBridge.y - 0.5) * 2 * 0.5;
-    const boxZ = -0.2;  // 固定在相機前方 20cm
+    const boxX = (noseBridge.x - 0.5) * 2;
+    const boxY = -(noseBridge.y - 0.5) * 2;
     
-    noseBridgeBox.position.set(boxX, boxY, boxZ);
+    const XY_SCALE = 0.5;
+    const correctedX = boxX * videoAspect * XY_SCALE;
+    const correctedY = boxY * XY_SCALE;
     
-    // 簡單旋轉
+    // ⭐⭐⭐ 動態深度計算 ⭐⭐⭐
+    // MediaPipe 的 z 值：負值 = 靠近相機，正值 = 遠離相機
+    // 典型範圍：-0.15 到 0.15
+    
+    const BASE_DISTANCE = 0.3;        // 基礎距離
+    const DEPTH_MULTIPLIER = 2.0;     // 深度影響倍數
+    
+    // 動態計算深度
+    const dynamicZ = -BASE_DISTANCE - (noseBridge.z * DEPTH_MULTIPLIER);
+    
+    // 平滑處理
+    const smoothedPos = smoothFilter.smooth(
+        [correctedX, correctedY, dynamicZ], 
+        'boxPosition'
+    );
+    
+    noseBridgeBox.position.set(
+        smoothedPos[0],
+        smoothedPos[1],
+        smoothedPos[2]
+    );
+    
+    // ===== 計算旋轉 =====
     const rawRoll = -Math.atan2(
         rightEyeInner.y - leftEyeInner.y,
         rightEyeInner.x - leftEyeInner.x
     );
-    noseBridgeBox.rotation.set(0, 0, rawRoll);
     
-    // ⭐ 超大尺寸
-    const BIG_SCALE = 5.0;
-    noseBridgeBox.scale.set(BIG_SCALE, BIG_SCALE, BIG_SCALE);
+    const eyeDistance = Math.abs(rightEyeInner.x - leftEyeInner.x);
+    const yawSensitivity = 0.4;
+    const rawYaw = (0.12 - eyeDistance) * yawSensitivity;
     
-    // 更新顯示
-    updateCoordinateDisplay(
-        [0, 0, rawRoll], 
-        BIG_SCALE, 
-        [boxX, boxY, boxZ]
+    const noseToEyeY = noseBridge.y - ((leftEyeInner.y + rightEyeInner.y) / 2);
+    const pitchSensitivity = 0.3;
+    const rawPitch = noseToEyeY * pitchSensitivity;
+    
+    const smoothedRot = smoothFilter.smooth(
+        [rawPitch, rawYaw, rawRoll],
+        'boxRotation'
     );
     
+    noseBridgeBox.rotation.set(
+        smoothedRot[0],
+        smoothedRot[1],
+        smoothedRot[2]
+    );
+    
+    // ⭐⭐⭐ 動態縮放計算 ⭐⭐⭐
+    // 使用眼睛間距來判斷臉部大小
+    const eyeDistanceX = Math.abs(rightEyeOuter.x - leftEyeOuter.x);
+    const eyeDistanceY = Math.abs(rightEyeOuter.y - leftEyeOuter.y);
+    
+    // 2D 距離（忽略深度）
+    const faceSize2D = Math.sqrt(
+        Math.pow(eyeDistanceX * videoAspect, 2) + 
+        Math.pow(eyeDistanceY, 2)
+    );
+    
+    // 根據深度調整縮放（臉越近，需要的 Box 越大）
+    const depthFactor = 1.0 / (1.0 + noseBridge.z * 2.0);  // 深度補償
+    
+    const BASE_SCALE = 3.5;
+    const dynamicScale = faceSize2D * BASE_SCALE * depthFactor;
+    
+    const smoothedScale = smoothFilter.smooth(dynamicScale, 'boxScale');
+    noseBridgeBox.scale.set(smoothedScale, smoothedScale, smoothedScale);
+    
+    // ===== 更新座標顯示 =====
+    updateCoordinateDisplay(smoothedRot, smoothedScale, smoothedPos);
+    
+    // ===== Console 調試信息 =====
     if (frameCount % 60 === 0) {
         console.log('═══════════════════════════');
-        console.log('📦 Box 位置:', { x: boxX.toFixed(3), y: boxY.toFixed(3), z: boxZ });
-        console.log('📏 Box 縮放:', BIG_SCALE, '(超大)');
-        console.log('👁️ 可見:', noseBridgeBox.visible);
-        console.log('🎨 不透明度:', noseBridgeBox.material.opacity);
+        console.log('📍 鼻樑 Z (MediaPipe):', noseBridge.z.toFixed(4));
+        console.log('📦 Box Z (Three.js):', smoothedPos[2].toFixed(4));
+        console.log('📏 臉部大小 (2D):', faceSize2D.toFixed(4));
+        console.log('🔍 深度因子:', depthFactor.toFixed(4));
+        console.log('📐 Box 縮放:', smoothedScale.toFixed(4));
+        console.log('💡 解釋:');
+        console.log('   - 鼻樑 Z < 0 = 靠近相機');
+        console.log('   - 鼻樑 Z > 0 = 遠離相機');
+        console.log('   - Box Z 越小（負值越大）= 越遠');
     }
 }
         
