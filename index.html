@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>鼻樑追蹤測試 - 座標對齊版</title>
+    <title>3D 虛擬太陽眼鏡 AR - 動態追蹤版</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
             margin: 0;
             padding: 0;
@@ -18,13 +18,13 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
             background: #000;
         }
-        
+
         #container {
             position: relative;
             width: 100vw;
             height: 100vh;
         }
-        
+
         video {
             position: absolute;
             top: 0;
@@ -34,7 +34,7 @@
             object-fit: cover;
             transform: scaleX(-1);
         }
-        
+
         #output {
             position: absolute;
             top: 0;
@@ -43,7 +43,7 @@
             height: 100%;
             transform: scaleX(-1);
         }
-        
+
         .loading {
             position: absolute;
             top: 50%;
@@ -58,14 +58,14 @@
             z-index: 1000;
             box-shadow: 0 4px 20px rgba(0,0,0,0.5);
         }
-        
-        .loading small {
-            display: block;
-            margin-top: 10px;
-            font-size: 14px;
-            color: #aaa;
-        }
-        
+
+            .loading small {
+                display: block;
+                margin-top: 10px;
+                font-size: 14px;
+                color: #aaa;
+            }
+
         .controls {
             position: absolute;
             bottom: 30px;
@@ -75,7 +75,7 @@
             gap: 10px;
             z-index: 100;
         }
-        
+
         button {
             padding: 14px 28px;
             background: rgba(255,255,255,0.95);
@@ -88,18 +88,18 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
             color: #333;
         }
-        
-        button:hover {
-            background: white;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
-        }
-        
-        button.active {
-            background: #4CAF50;
-            color: white;
-        }
-        
+
+            button:hover {
+                background: white;
+                transform: translateY(-2px);
+                box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+            }
+
+            button.active {
+                background: #4CAF50;
+                color: white;
+            }
+
         .info {
             position: absolute;
             top: 20px;
@@ -113,61 +113,16 @@
             font-family: monospace;
             box-shadow: 0 2px 10px rgba(0,0,0,0.3);
         }
-        
-        .debug-info {
-            position: absolute;
-            top: 70px;
-            right: 20px;
-            background: rgba(0,0,0,0.9);
-            color: #0f0;
-            padding: 15px 20px;
-            border-radius: 8px;
-            font-size: 13px;
-            z-index: 100;
-            font-family: monospace;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-            max-width: 400px;
-            line-height: 1.6;
-        }
-        
-        .debug-info .section {
-            margin-bottom: 10px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid #333;
-        }
-        
-        .debug-info .section:last-child {
-            border-bottom: none;
-            margin-bottom: 0;
-        }
-        
-        .debug-info .label {
-            color: #ffff00;
-            font-weight: bold;
-        }
-        
-        .debug-info .value {
-            color: #00ff00;
-        }
-        
-        .debug-info .diff {
-            color: #ff6600;
-        }
-        
+
         @media (max-width: 768px) {
             button {
                 padding: 12px 20px;
                 font-size: 14px;
             }
-            
+
             .controls {
                 bottom: 20px;
                 gap: 8px;
-            }
-            
-            .debug-info {
-                font-size: 11px;
-                max-width: 300px;
             }
         }
     </style>
@@ -178,34 +133,17 @@
             載入中...<br>
             <small>正在初始化相機和 AI 模型</small>
         </div>
-        
+
         <video id="video" playsinline autoplay></video>
         <canvas id="output"></canvas>
-        
+
         <div class="controls">
-            <button id="toggleBox" class="active">顯示盒子</button>
-            <button id="toggleDebug" class="active">座標資訊</button>
+            <button id="model1" class="active">經典款</button>
+            <button id="model2">飛行員</button>
+            <button id="model3">圓框</button>
         </div>
-        
+
         <div class="info" id="info">FPS: --</div>
-        <div class="debug-info" id="debugInfo">
-            <div class="section">
-                <div class="label">📍 鼻樑原始座標 (MediaPipe)</div>
-                <div class="value" id="noseCoords">--</div>
-            </div>
-            <div class="section">
-                <div class="label">📦 Box 最終座標 (Three.js)</div>
-                <div class="value" id="boxCoords">--</div>
-            </div>
-            <div class="section">
-                <div class="label">📏 座標差異</div>
-                <div class="diff" id="coordDiff">--</div>
-            </div>
-            <div class="section">
-                <div class="label">🎯 模式</div>
-                <div class="value" id="modeInfo">直接對齊模式</div>
-            </div>
-        </div>
     </div>
 
     <!-- MediaPipe CDN -->
@@ -213,69 +151,63 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
-    
+
     <!-- Three.js -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js" crossorigin="anonymous"></script>
 
-  <script>
+    <script>
         // ==================== 全域變數 ====================
         const video = document.getElementById('video');
         const canvas = document.getElementById('output');
         const loading = document.getElementById('loading');
         const infoDiv = document.getElementById('info');
-        const debugInfoDiv = document.getElementById('debugInfo');
-        
-        let scene, camera, renderer, noseBridgeBox;
+
+        let scene, camera, renderer, glassesModel;
+        let currentStyle = 'classic';
         let lastTime = Date.now();
         let frameCount = 0;
-        let showBox = true;
-        let showDebug = true;
-        
-        // 用於顯示的座標資訊（統一使用 MediaPipe 座標空間）
-        let noseRawCoords = { x: 0, y: 0, z: 0 };
-        let boxRawCoords = { x: 0, y: 0, z: 0 };  // 轉換前的座標
-        
+
         // ==================== 平滑濾波器 ====================
         class SmoothFilter {
             constructor(smoothingFactor = 0.4) {
                 this.smoothingFactor = smoothingFactor;
                 this.previousValues = {};
             }
-            
+
             smooth(currentValue, key) {
                 if (!this.previousValues[key]) {
                     this.previousValues[key] = currentValue;
                     return currentValue;
                 }
-                
+
                 if (Array.isArray(currentValue)) {
                     const smoothed = currentValue.map((val, i) => {
-                        return this.previousValues[key][i] + 
-                               (val - this.previousValues[key][i]) * this.smoothingFactor;
+                        return this.previousValues[key][i] +
+                            (val - this.previousValues[key][i]) * this.smoothingFactor;
                     });
                     this.previousValues[key] = smoothed;
                     return smoothed;
                 } else {
-                    const smoothed = this.previousValues[key] + 
-                                   (currentValue - this.previousValues[key]) * this.smoothingFactor;
+                    const smoothed = this.previousValues[key] +
+                        (currentValue - this.previousValues[key]) * this.smoothingFactor;
                     this.previousValues[key] = smoothed;
                     return smoothed;
                 }
             }
         }
-        
+
         const smoothFilter = new SmoothFilter(0.4);
-        
+
         // ==================== Three.js 場景設定 ====================
         function initThreeJS() {
             console.log('初始化 Three.js...');
-            
+
             scene = new THREE.Scene();
-            
+
             const aspect = window.innerWidth / window.innerHeight;
             camera = new THREE.PerspectiveCamera(63, aspect, 0.01, 1000);
             camera.position.set(0, 0, 0);
-            
+
             renderer = new THREE.WebGLRenderer({
                 canvas: canvas,
                 alpha: true,
@@ -284,69 +216,297 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.setClearColor(0x000000, 0);
-            
+
             // 光源設置
             const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
             scene.add(ambientLight);
-            
+
             const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
             directionalLight1.position.set(0, 1, 1);
             scene.add(directionalLight1);
-            
+
             const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
             directionalLight2.position.set(-1, 0, 0.5);
             scene.add(directionalLight2);
-            
-            // 創建並添加鼻樑測試盒
-            noseBridgeBox = createNoseBridgeBox();
-            scene.add(noseBridgeBox);
-            
+
             console.log('✓ Three.js 初始化完成');
         }
-        
-        // ==================== 建立鼻樑測試盒 ====================
-        function createNoseBridgeBox() {
-            const geometry = new THREE.BoxGeometry(0.02, 0.015, 0.01);
-            
-            const material = new THREE.MeshPhongMaterial({
-                color: 0x00ff00,
+
+        // ==================== 建立經典款眼鏡 ====================
+        function createClassicGlasses() {
+            const group = new THREE.Group();
+
+            const frameMaterial = new THREE.MeshPhongMaterial({
+                color: 0x000000,
+                shininess: 80,
+                specular: 0x222222
+            });
+
+            const lensMaterial = new THREE.MeshPhongMaterial({
+                color: 0x1a1a1a,
                 transparent: true,
-                opacity: 0.8,
+                opacity: 0.85,
+                shininess: 100,
+                specular: 0x444444
+            });
+
+            // 左鏡片和鏡框
+            const leftLens = new THREE.Mesh(
+                new THREE.CircleGeometry(0.045, 32),
+                lensMaterial
+            );
+            leftLens.position.set(-0.065, 0, 0);
+            group.add(leftLens);
+
+            const leftFrame = new THREE.Mesh(
+                new THREE.TorusGeometry(0.045, 0.006, 16, 32),
+                frameMaterial
+            );
+            leftFrame.position.set(-0.065, 0, 0);
+            group.add(leftFrame);
+
+            // 右鏡片和鏡框
+            const rightLens = new THREE.Mesh(
+                new THREE.CircleGeometry(0.045, 32),
+                lensMaterial
+            );
+            rightLens.position.set(0.065, 0, 0);
+            group.add(rightLens);
+
+            const rightFrame = new THREE.Mesh(
+                new THREE.TorusGeometry(0.045, 0.006, 16, 32),
+                frameMaterial
+            );
+            rightFrame.position.set(0.065, 0, 0);
+            group.add(rightFrame);
+
+            // 鼻樑
+            const bridge = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.005, 0.005, 0.03, 8),
+                frameMaterial
+            );
+            bridge.rotation.z = Math.PI / 2;
+            group.add(bridge);
+
+            // 鏡腿
+            const leftTemple = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.004, 0.004, 0.15, 8),
+                frameMaterial
+            );
+            leftTemple.rotation.z = Math.PI / 2;
+            leftTemple.position.set(-0.14, 0, 0);
+            group.add(leftTemple);
+
+            const rightTemple = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.004, 0.004, 0.15, 8),
+                frameMaterial
+            );
+            rightTemple.rotation.z = Math.PI / 2;
+            rightTemple.position.set(0.14, 0, 0);
+            group.add(rightTemple);
+
+            return group;
+        }
+
+        // ==================== 建立飛行員款眼鏡 ====================
+        function createAviatorGlasses() {
+            const group = new THREE.Group();
+
+            const frameMaterial = new THREE.MeshPhongMaterial({
+                color: 0xC0C0C0,
                 shininess: 100
             });
-            
-            const box = new THREE.Mesh(geometry, material);
-            
-            const edges = new THREE.EdgesGeometry(geometry);
-            const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
-            const wireframe = new THREE.LineSegments(edges, lineMaterial);
-            box.add(wireframe);
-            
-            return box;
+
+            const lensMaterial = new THREE.MeshPhongMaterial({
+                color: 0x2a2a2a,
+                transparent: true,
+                opacity: 0.8,
+                shininess: 120
+            });
+
+            // 左鏡片
+            const leftLens = new THREE.Mesh(
+                new THREE.CircleGeometry(0.05, 32),
+                lensMaterial
+            );
+            leftLens.scale.set(1, 1.1, 1);
+            leftLens.position.set(-0.065, 0, 0);
+            group.add(leftLens);
+
+            const leftFrame = new THREE.Mesh(
+                new THREE.TorusGeometry(0.05, 0.005, 16, 32),
+                frameMaterial
+            );
+            leftFrame.scale.set(1, 1.1, 1);
+            leftFrame.position.set(-0.065, 0, 0);
+            group.add(leftFrame);
+
+            // 右鏡片
+            const rightLens = new THREE.Mesh(
+                new THREE.CircleGeometry(0.05, 32),
+                lensMaterial
+            );
+            rightLens.scale.set(1, 1.1, 1);
+            rightLens.position.set(0.065, 0, 0);
+            group.add(rightLens);
+
+            const rightFrame = new THREE.Mesh(
+                new THREE.TorusGeometry(0.05, 0.005, 16, 32),
+                frameMaterial
+            );
+            rightFrame.scale.set(1, 1.1, 1);
+            rightFrame.position.set(0.065, 0, 0);
+            group.add(rightFrame);
+
+            // 鼻樑
+            const bridgeTop = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.004, 0.004, 0.025, 8),
+                frameMaterial
+            );
+            bridgeTop.rotation.z = Math.PI / 2;
+            bridgeTop.position.y = 0.015;
+            group.add(bridgeTop);
+
+            // 鏡腿
+            const leftTemple = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.004, 0.004, 0.15, 8),
+                frameMaterial
+            );
+            leftTemple.rotation.z = Math.PI / 2;
+            leftTemple.position.set(-0.14, 0, 0);
+            group.add(leftTemple);
+
+            const rightTemple = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.004, 0.004, 0.15, 8),
+                frameMaterial
+            );
+            rightTemple.rotation.z = Math.PI / 2;
+            rightTemple.position.set(0.14, 0, 0);
+            group.add(rightTemple);
+
+            return group;
         }
-        
+
+        // ==================== 建立圓框款眼鏡 ====================
+        function createRoundGlasses() {
+            const group = new THREE.Group();
+
+            const frameMaterial = new THREE.MeshPhongMaterial({
+                color: 0x8B4513,
+                shininess: 60
+            });
+
+            const lensMaterial = new THREE.MeshPhongMaterial({
+                color: 0x3a2817,
+                transparent: true,
+                opacity: 0.75,
+                shininess: 80
+            });
+
+            const radius = 0.042;
+
+            // 左鏡片
+            const leftLens = new THREE.Mesh(
+                new THREE.CircleGeometry(radius, 32),
+                lensMaterial
+            );
+            leftLens.position.set(-0.06, 0, 0);
+            group.add(leftLens);
+
+            const leftFrame = new THREE.Mesh(
+                new THREE.TorusGeometry(radius, 0.007, 16, 32),
+                frameMaterial
+            );
+            leftFrame.position.set(-0.06, 0, 0);
+            group.add(leftFrame);
+
+            // 右鏡片
+            const rightLens = new THREE.Mesh(
+                new THREE.CircleGeometry(radius, 32),
+                lensMaterial
+            );
+            rightLens.position.set(0.06, 0, 0);
+            group.add(rightLens);
+
+            const rightFrame = new THREE.Mesh(
+                new THREE.TorusGeometry(radius, 0.007, 16, 32),
+                frameMaterial
+            );
+            rightFrame.position.set(0.06, 0, 0);
+            group.add(rightFrame);
+
+            // 鼻樑
+            const bridge = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.005, 0.005, 0.025, 8),
+                frameMaterial
+            );
+            bridge.rotation.z = Math.PI / 2;
+            group.add(bridge);
+
+            // 鏡腿
+            const leftTemple = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.005, 0.005, 0.15, 8),
+                frameMaterial
+            );
+            leftTemple.rotation.z = Math.PI / 2;
+            leftTemple.position.set(-0.135, 0, 0);
+            group.add(leftTemple);
+
+            const rightTemple = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.005, 0.005, 0.15, 8),
+                frameMaterial
+            );
+            rightTemple.rotation.z = Math.PI / 2;
+            rightTemple.position.set(0.135, 0, 0);
+            group.add(rightTemple);
+
+            return group;
+        }
+
+        // ==================== 切換眼鏡樣式 ====================
+        function switchGlassesStyle(style) {
+            if (glassesModel) {
+                scene.remove(glassesModel);
+            }
+
+            switch (style) {
+                case 'classic':
+                    glassesModel = createClassicGlasses();
+                    break;
+                case 'aviator':
+                    glassesModel = createAviatorGlasses();
+                    break;
+                case 'round':
+                    glassesModel = createRoundGlasses();
+                    break;
+            }
+
+            scene.add(glassesModel);
+            currentStyle = style;
+        }
+
         // ==================== MediaPipe Face Mesh 設定 ====================
         const faceMesh = new FaceMesh({
             locateFile: (file) => {
                 return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
             }
         });
-        
+
         faceMesh.setOptions({
             maxNumFaces: 1,
             refineLandmarks: true,
             minDetectionConfidence: 0.5,
             minTrackingConfidence: 0.5
         });
-        
+
         faceMesh.onResults(onResults);
-        
+
         // ==================== 處理偵測結果 ====================
         function onResults(results) {
             if (loading.style.display !== 'none') {
                 loading.style.display = 'none';
             }
-            
+
             frameCount++;
             const now = Date.now();
             if (now - lastTime > 1000) {
@@ -354,191 +514,144 @@
                 frameCount = 0;
                 lastTime = now;
             }
-            
+
             if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
                 const landmarks = results.multiFaceLandmarks[0];
-                updateNoseBridgeBox(landmarks);
+                updateGlassesPosition(landmarks);
             } else {
-                if (noseBridgeBox) {
-                    noseBridgeBox.visible = false;
+                if (glassesModel) {
+                    glassesModel.visible = false;
                 }
             }
-            
+
             renderer.render(scene, camera);
         }
-        
-        // ==================== 更新鼻樑盒子位置（統一座標顯示）====================
-    // ==================== 更新鼻樑盒子位置（動態深度和縮放）====================
-function updateNoseBridgeBox(landmarks) {
-    if (!noseBridgeBox) return;
-    
-    noseBridgeBox.visible = showBox;
-    if (!showBox) return;
-    
-    // ===== 鼻樑關鍵特徵點 =====
-    const noseBridge = landmarks[6];
-    const leftEyeInner = landmarks[133];
-    const rightEyeInner = landmarks[362];
-    const leftEyeOuter = landmarks[33];
-    const rightEyeOuter = landmarks[263];
-    
-    // ⭐ 記錄鼻樑原始座標
-    noseRawCoords = {
-        x: noseBridge.x,
-        y: noseBridge.y,
-        z: noseBridge.z
-    };
-    
-    boxRawCoords = {
-        x: noseBridge.x,
-        y: noseBridge.y,
-        z: noseBridge.z
-    };
-    
-    // ===== 計算 X, Y 位置 =====
-    const videoAspect = video.videoWidth / video.videoHeight;
-    
-    const boxX = (noseBridge.x - 0.5) * 2;
-    const boxY = -(noseBridge.y - 0.5) * 2;
-    
-    const XY_SCALE = 0.5;
-    const correctedX = boxX * videoAspect * XY_SCALE;
-    const correctedY = boxY * XY_SCALE;
-    
-    // ⭐⭐⭐ 動態深度計算 ⭐⭐⭐
-    // MediaPipe 的 z 值：負值 = 靠近相機，正值 = 遠離相機
-    // 典型範圍：-0.15 到 0.15
-    
-    const BASE_DISTANCE = 0.3;        // 基礎距離
-    const DEPTH_MULTIPLIER = 1.5;     // 深度影響倍數
-    
-    // 動態計算深度
-    const dynamicZ = -BASE_DISTANCE - (noseBridge.z * DEPTH_MULTIPLIER);
-    
-    // 平滑處理
-    const smoothedPos = smoothFilter.smooth(
-        [correctedX, correctedY, dynamicZ], 
-        'boxPosition'
-    );
-    
-    noseBridgeBox.position.set(
-        smoothedPos[0],
-        smoothedPos[1],
-        smoothedPos[2]
-    );
-    
-    // ===== 計算旋轉 =====
-    const rawRoll = -Math.atan2(
-        rightEyeInner.y - leftEyeInner.y,
-        rightEyeInner.x - leftEyeInner.x
-    );
-    
-    const eyeDistance = Math.abs(rightEyeInner.x - leftEyeInner.x);
-    const yawSensitivity = 0.4;
-    const rawYaw = (0.12 - eyeDistance) * yawSensitivity;
-    
-    const noseToEyeY = noseBridge.y - ((leftEyeInner.y + rightEyeInner.y) / 2);
-    const pitchSensitivity = 0.3;
-    const rawPitch = noseToEyeY * pitchSensitivity;
-    
-    const smoothedRot = smoothFilter.smooth(
-        [rawPitch, rawYaw, rawRoll],
-        'boxRotation'
-    );
-    
-    noseBridgeBox.rotation.set(
-        smoothedRot[0],
-        smoothedRot[1],
-        smoothedRot[2]
-    );
-    
-    // ⭐⭐⭐ 動態縮放計算 ⭐⭐⭐
-    // 使用眼睛間距來判斷臉部大小
-    const eyeDistanceX = Math.abs(rightEyeOuter.x - leftEyeOuter.x);
-    const eyeDistanceY = Math.abs(rightEyeOuter.y - leftEyeOuter.y);
-    
-    // 2D 距離（忽略深度）
-    const faceSize2D = Math.sqrt(
-        Math.pow(eyeDistanceX * videoAspect, 2) + 
-        Math.pow(eyeDistanceY, 2)
-    );
-    
-    // 根據深度調整縮放（臉越近，需要的 Box 越大）
-    const depthFactor = 1.0 / (1.0 + noseBridge.z * 2.0);  // 深度補償
-    
-    const BASE_SCALE = 3.5;
-    const dynamicScale = faceSize2D * BASE_SCALE * depthFactor;
-    
-    const smoothedScale = smoothFilter.smooth(dynamicScale, 'boxScale');
-    noseBridgeBox.scale.set(smoothedScale, smoothedScale, smoothedScale);
-    
-    // ===== 更新座標顯示 =====
-    updateCoordinateDisplay(smoothedRot, smoothedScale, smoothedPos);
-    
-    // ===== Console 調試信息 =====
-    if (frameCount % 60 === 0) {
-        console.log('═══════════════════════════');
-        console.log('📍 鼻樑 Z (MediaPipe):', noseBridge.z.toFixed(4));
-        console.log('📦 Box Z (Three.js):', smoothedPos[2].toFixed(4));
-        console.log('📏 臉部大小 (2D):', faceSize2D.toFixed(4));
-        console.log('🔍 深度因子:', depthFactor.toFixed(4));
-        console.log('📐 Box 縮放:', smoothedScale.toFixed(4));
-        console.log('💡 解釋:');
-        console.log('   - 鼻樑 Z < 0 = 靠近相機');
-        console.log('   - 鼻樑 Z > 0 = 遠離相機');
-        console.log('   - Box Z 越小（負值越大）= 越遠');
-    }
-}
-        
-        // ==================== 更新座標顯示（統一使用 MediaPipe 座標）====================
-        function updateCoordinateDisplay(rotation, scale, threejsPos) {
-            if (!showDebug) return;
-            
-            // 鼻樑原始座標（MediaPipe 空間）
-            document.getElementById('noseCoords').innerHTML = `
-                X: ${noseRawCoords.x.toFixed(4)}<br>
-                Y: ${noseRawCoords.y.toFixed(4)}<br>
-                Z: ${noseRawCoords.z.toFixed(4)}
-            `;
-            
-            // Box 座標（也顯示為 MediaPipe 空間）
-            document.getElementById('boxCoords').innerHTML = `
-                X: ${boxRawCoords.x.toFixed(4)} <span style="color:#888">(= 鼻樑 X)</span><br>
-                Y: ${boxRawCoords.y.toFixed(4)} <span style="color:#888">(= 鼻樑 Y)</span><br>
-                Z: ${boxRawCoords.z.toFixed(4)} <span style="color:#888">(= 鼻樑 Z)</span><br>
-                <span style="color:#888; font-size:11px;">Three.js 位置: [${threejsPos.map(v => v.toFixed(3)).join(', ')}]</span><br>
-                旋轉: [${rotation.map(v => (v * 180 / Math.PI).toFixed(1)).join('°, ')}°]<br>
-                縮放: ${scale.toFixed(3)}
-            `;
-            
-            // 計算差異（應該是 0）
-            const diffX = Math.abs(boxRawCoords.x - noseRawCoords.x);
-            const diffY = Math.abs(boxRawCoords.y - noseRawCoords.y);
-            const diffZ = Math.abs(boxRawCoords.z - noseRawCoords.z);
-            
-            document.getElementById('coordDiff').innerHTML = `
-                ΔX: ${diffX.toFixed(6)} ${diffX < 0.0001 ? '✅' : '❌'}<br>
-                ΔY: ${diffY.toFixed(6)} ${diffY < 0.0001 ? '✅' : '❌'}<br>
-                ΔZ: ${diffZ.toFixed(6)} ${diffZ < 0.0001 ? '✅' : '❌'}<br>
-                <span style="color:#0f0;">${diffX < 0.0001 && diffY < 0.0001 && diffZ < 0.0001 ? '完全對齊！' : '有差異'}</span>
-            `;
-        }
-        
-        // ==================== 按鈕事件 ====================
-        document.getElementById('toggleBox').addEventListener('click', () => {
-            showBox = !showBox;
-            document.getElementById('toggleBox').classList.toggle('active');
-            if (noseBridgeBox) {
-                noseBridgeBox.visible = showBox;
+
+        // ==================== 更新眼鏡位置（使用成功的追蹤邏輯）====================
+        function updateGlassesPosition(landmarks) {
+            if (!glassesModel) return;
+
+            glassesModel.visible = true;
+
+            // ===== 關鍵特徵點 =====
+            const leftEyeCenter = landmarks[468];
+            const rightEyeCenter = landmarks[473];
+            const leftEyeOuter = landmarks[33];
+            const rightEyeOuter = landmarks[263];
+            const noseBridge = landmarks[6];
+
+            // ===== 計算眼鏡中心位置（使用眼睛外角）=====
+            const centerX = (leftEyeOuter.x + rightEyeOuter.x) / 2;
+            const centerY = (leftEyeOuter.y + rightEyeOuter.y) / 2;
+            const centerZ = (leftEyeOuter.z + rightEyeOuter.z) / 2;
+
+            // ===== 座標轉換 =====
+            const videoAspect = video.videoWidth / video.videoHeight;
+
+            const rawX = (centerX - 0.5) * 2;
+            const rawY = -(centerY - 0.5) * 2;
+
+            const XY_SCALE = 0.5;
+            const correctedX = rawX * videoAspect * XY_SCALE;
+            const correctedY = rawY * XY_SCALE;
+
+            // ⭐⭐⭐ 動態深度計算（與 Box 測試相同）⭐⭐⭐
+            const BASE_DISTANCE = 0.3;
+            const DEPTH_MULTIPLIER = 2.0;
+            const dynamicZ = -BASE_DISTANCE - (centerZ * DEPTH_MULTIPLIER);
+
+            // 平滑位置
+            const smoothedPos = smoothFilter.smooth(
+                [correctedX, correctedY, dynamicZ],
+                'position'
+            );
+
+            glassesModel.position.set(
+                smoothedPos[0],
+                smoothedPos[1],
+                smoothedPos[2]
+            );
+
+            // ===== 計算旋轉 =====
+            // Roll - 左右歪頭
+            const rawRoll = -Math.atan2(
+                rightEyeOuter.y - leftEyeOuter.y,
+                rightEyeOuter.x - leftEyeOuter.x
+            );
+
+            // Yaw - 左右轉頭
+            const eyeDistance = Math.abs(rightEyeCenter.x - leftEyeCenter.x);
+            const yawSensitivity = 0.4;
+            const rawYaw = (0.12 - eyeDistance) * yawSensitivity;
+
+            // Pitch - 上下點頭
+            const noseToEyeY = centerY - noseBridge.y;
+            const pitchSensitivity = 0.3;
+            const rawPitch = noseToEyeY * pitchSensitivity;
+
+            // 平滑旋轉
+            const smoothedRot = smoothFilter.smooth(
+                [rawPitch, rawYaw, rawRoll],
+                'rotation'
+            );
+
+            glassesModel.rotation.set(
+                smoothedRot[0],
+                smoothedRot[1],
+                smoothedRot[2]
+            );
+
+            // ⭐⭐⭐ 動態縮放（與 Box 測試相同）⭐⭐⭐
+            const eyeDistanceX = Math.abs(rightEyeOuter.x - leftEyeOuter.x);
+            const eyeDistanceY = Math.abs(rightEyeOuter.y - leftEyeOuter.y);
+
+            const faceSize2D = Math.sqrt(
+                Math.pow(eyeDistanceX * videoAspect, 2) +
+                Math.pow(eyeDistanceY, 2)
+            );
+
+            // 深度補償
+            const depthFactor = 1.0 / (1.0 + centerZ * 2.0);
+
+            const BASE_SCALE = 3.5;
+            const dynamicScale = faceSize2D * BASE_SCALE * depthFactor;
+
+            const smoothedScale = smoothFilter.smooth(dynamicScale, 'scale');
+            glassesModel.scale.set(smoothedScale, smoothedScale, smoothedScale);
+
+            // 除錯資訊
+            if (frameCount % 120 === 0) {
+                console.log('═══════════════════════════');
+                console.log('🕶️ 眼鏡追蹤狀態');
+                console.log('  位置 Z:', smoothedPos[2].toFixed(3));
+                console.log('  縮放:', smoothedScale.toFixed(3));
+                console.log('  旋轉 (度):', smoothedRot.map(v => (v * 180 / Math.PI).toFixed(1)));
             }
+        }
+
+        // ==================== 按鈕事件 ====================
+        document.getElementById('model1').addEventListener('click', () => {
+            switchGlassesStyle('classic');
+            updateActiveButton('model1');
         });
-        
-        document.getElementById('toggleDebug').addEventListener('click', () => {
-            showDebug = !showDebug;
-            debugInfoDiv.style.display = showDebug ? 'block' : 'none';
-            document.getElementById('toggleDebug').classList.toggle('active');
+
+        document.getElementById('model2').addEventListener('click', () => {
+            switchGlassesStyle('aviator');
+            updateActiveButton('model2');
         });
-        
+
+        document.getElementById('model3').addEventListener('click', () => {
+            switchGlassesStyle('round');
+            updateActiveButton('model3');
+        });
+
+        function updateActiveButton(activeId) {
+            document.querySelectorAll('button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById(activeId).classList.add('active');
+        }
+
         // ==================== 視窗大小調整 ====================
         window.addEventListener('resize', () => {
             const aspect = window.innerWidth / window.innerHeight;
@@ -546,11 +659,11 @@ function updateNoseBridgeBox(landmarks) {
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
-        
+
         // ==================== 初始化啟動 ====================
         async function init() {
             console.log('🚀 開始初始化應用...');
-            
+
             try {
                 if (typeof THREE === 'undefined') {
                     throw new Error('Three.js 未載入');
@@ -561,39 +674,40 @@ function updateNoseBridgeBox(landmarks) {
                 if (typeof Camera === 'undefined') {
                     throw new Error('MediaPipe Camera 未載入');
                 }
-                
+
                 console.log('✓ 所有庫載入成功');
-                
+
                 initThreeJS();
-                
+                switchGlassesStyle('classic');
+
                 console.log('📷 啟動相機...');
                 const cameraInstance = new Camera(video, {
                     onFrame: async () => {
-                        await faceMesh.send({image: video});
+                        await faceMesh.send({ image: video });
                     },
                     width: 1280,
                     height: 720,
                     facingMode: 'user'
                 });
-                
+
                 await cameraInstance.start();
                 console.log('✓ 相機啟動成功');
-                
+
             } catch (error) {
                 console.error('❌ 初始化失敗:', error);
                 loading.innerHTML = `
-                    初始化失敗<br>
-                    <small>${error.message}</small><br>
-                    <small style="margin-top:10px;display:block">請重新整理頁面</small>
-                `;
+                        初始化失敗<br>
+                        <small>${error.message}</small><br>
+                        <small style="margin-top:10px;display:block">請重新整理頁面</small>
+                    `;
             }
         }
-        
+
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', init);
         } else {
             init();
         }
-</script>
+    </script>
 </body>
 </html>
