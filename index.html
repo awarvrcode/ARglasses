@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>鼻樑追蹤測試 - MediaPipe</title>
+    <title>鼻樑追蹤測試 - 座標對齊版</title>
     <style>
         * {
             margin: 0;
@@ -118,15 +118,40 @@
             position: absolute;
             top: 70px;
             right: 20px;
-            background: rgba(0,0,0,0.8);
+            background: rgba(0,0,0,0.9);
             color: #0f0;
-            padding: 12px 20px;
+            padding: 15px 20px;
             border-radius: 8px;
-            font-size: 12px;
+            font-size: 13px;
             z-index: 100;
             font-family: monospace;
             box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-            max-width: 300px;
+            max-width: 400px;
+            line-height: 1.6;
+        }
+        
+        .debug-info .section {
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #333;
+        }
+        
+        .debug-info .section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+        
+        .debug-info .label {
+            color: #ffff00;
+            font-weight: bold;
+        }
+        
+        .debug-info .value {
+            color: #00ff00;
+        }
+        
+        .debug-info .diff {
+            color: #ff6600;
         }
         
         @media (max-width: 768px) {
@@ -138,6 +163,11 @@
             .controls {
                 bottom: 20px;
                 gap: 8px;
+            }
+            
+            .debug-info {
+                font-size: 11px;
+                max-width: 300px;
             }
         }
     </style>
@@ -154,14 +184,27 @@
         
         <div class="controls">
             <button id="toggleBox" class="active">顯示盒子</button>
-            <button id="toggleDebug">除錯資訊</button>
+            <button id="toggleDebug" class="active">座標資訊</button>
         </div>
         
         <div class="info" id="info">FPS: --</div>
-        <div class="debug-info" id="debugInfo" style="display: none;">
-            位置: --<br>
-            旋轉: --<br>
-            縮放: --
+        <div class="debug-info" id="debugInfo">
+            <div class="section">
+                <div class="label">📍 鼻樑原始座標 (MediaPipe)</div>
+                <div class="value" id="noseCoords">--</div>
+            </div>
+            <div class="section">
+                <div class="label">📦 Box 最終座標 (Three.js)</div>
+                <div class="value" id="boxCoords">--</div>
+            </div>
+            <div class="section">
+                <div class="label">📏 座標差異</div>
+                <div class="diff" id="coordDiff">--</div>
+            </div>
+            <div class="section">
+                <div class="label">🎯 模式</div>
+                <div class="value" id="modeInfo">直接對齊模式</div>
+            </div>
         </div>
     </div>
 
@@ -186,7 +229,11 @@
         let lastTime = Date.now();
         let frameCount = 0;
         let showBox = true;
-        let showDebug = false;
+        let showDebug = true;
+        
+        // 用於顯示的座標資訊
+        let noseRawCoords = { x: 0, y: 0, z: 0 };
+        let boxFinalCoords = { x: 0, y: 0, z: 0 };
         
         // ==================== 平滑濾波器 ====================
         class SmoothFilter {
@@ -259,20 +306,17 @@
         
         // ==================== 建立鼻樑測試盒 ====================
         function createNoseBridgeBox() {
-            // 創建一個小立方體
             const geometry = new THREE.BoxGeometry(0.02, 0.015, 0.01);
             
-            // 使用鮮豔的材質方便觀察
             const material = new THREE.MeshPhongMaterial({
-                color: 0x00ff00,  // 綠色
+                color: 0x00ff00,
                 transparent: true,
-                opacity: 0.7,
+                opacity: 0.8,
                 shininess: 100
             });
             
             const box = new THREE.Mesh(geometry, material);
             
-            // 添加邊框線，更容易看清楚
             const edges = new THREE.EdgesGeometry(geometry);
             const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
             const wireframe = new THREE.LineSegments(edges, lineMaterial);
@@ -323,7 +367,7 @@
             renderer.render(scene, camera);
         }
         
-        // ==================== 更新鼻樑盒子位置 ====================
+        // ==================== 更新鼻樑盒子位置（完全對齊版）====================
         function updateNoseBridgeBox(landmarks) {
             if (!noseBridgeBox) return;
             
@@ -331,26 +375,32 @@
             if (!showBox) return;
             
             // ===== 鼻樑關鍵特徵點 =====
-            const noseBridge = landmarks[6];      // 鼻樑中心
-            const noseTip = landmarks[1];         // 鼻尖
-            const leftEyeInner = landmarks[133];  // 左眼內角
-            const rightEyeInner = landmarks[362]; // 右眼內角
+            const noseBridge = landmarks[6];
+            const leftEyeInner = landmarks[133];
+            const rightEyeInner = landmarks[362];
             
-            // ===== 計算盒子位置 =====
+            // 記錄原始座標
+            noseRawCoords = {
+                x: noseBridge.x,
+                y: noseBridge.y,
+                z: noseBridge.z
+            };
+            
+            // ===== 完全對齊模式：直接使用鼻樑座標 =====
             const videoAspect = video.videoWidth / video.videoHeight;
             
+            // 將 MediaPipe 的標準化座標 (0-1) 轉換到 Three.js 空間座標
             const boxX = (noseBridge.x - 0.5) * 2;
             const boxY = -(noseBridge.y - 0.5) * 2;
-            const boxZ = noseBridge.z;
             
-            // ⭐⭐⭐ 可調整的參數 ⭐⭐⭐
-            const DISTANCE = -0.06;      // 距離（調整這個讓盒子更近或更遠）
-            const XY_SCALE = 0.3;        // X/Y 縮放
-            const DEPTH_SCALE = 0.01;    // 深度影響
-            
+            // ⭐ 直接對齊：不做複雜轉換，只做基本的空間映射
+            const XY_SCALE = 0.5;  // 基本縮放
             const correctedX = boxX * videoAspect * XY_SCALE;
             const correctedY = boxY * XY_SCALE;
-            const correctedZ = boxZ * DEPTH_SCALE + DISTANCE;
+            
+            // ⭐ Z 軸：直接使用鼻樑的 Z 值，加上一個固定偏移
+            const Z_OFFSET = -0.01;  // 可調整（-0.02 到 0）
+            const correctedZ = noseBridge.z * 0.5 + Z_OFFSET;
             
             // 平滑位置
             const smoothedPos = smoothFilter.smooth(
@@ -364,25 +414,27 @@
                 smoothedPos[2]
             );
             
-            // ===== 計算旋轉（讓盒子跟隨臉部方向）=====
+            // 記錄最終座標
+            boxFinalCoords = {
+                x: smoothedPos[0],
+                y: smoothedPos[1],
+                z: smoothedPos[2]
+            };
             
-            // Roll - 左右歪頭
+            // ===== 計算旋轉 =====
             const rawRoll = -Math.atan2(
                 rightEyeInner.y - leftEyeInner.y,
                 rightEyeInner.x - leftEyeInner.x
             );
             
-            // Yaw - 左右轉頭
             const eyeDistance = Math.abs(rightEyeInner.x - leftEyeInner.x);
             const yawSensitivity = 0.4;
             const rawYaw = (0.12 - eyeDistance) * yawSensitivity;
             
-            // Pitch - 上下點頭
             const noseToEyeY = noseBridge.y - ((leftEyeInner.y + rightEyeInner.y) / 2);
             const pitchSensitivity = 0.3;
             const rawPitch = noseToEyeY * pitchSensitivity;
             
-            // 平滑旋轉
             const smoothedRot = smoothFilter.smooth(
                 [rawPitch, rawYaw, rawRoll],
                 'boxRotation'
@@ -394,33 +446,48 @@
                 smoothedRot[2]
             );
             
-            // ===== 計算縮放（根據臉部大小）=====
+            // ===== 計算縮放 =====
             const faceWidth = Math.abs(rightEyeInner.x - leftEyeInner.x);
-            const scaleMultiplier = 4.0;  // 調整盒子大小
+            const scaleMultiplier = 8.0;
             const boxScale = faceWidth * scaleMultiplier;
             
             const smoothedScale = smoothFilter.smooth(boxScale, 'boxScale');
             noseBridgeBox.scale.set(smoothedScale, smoothedScale, smoothedScale);
             
-            // 更新除錯資訊
-            if (showDebug) {
-                debugInfoDiv.innerHTML = `
-                    位置: [${smoothedPos.map(v => v.toFixed(3)).join(', ')}]<br>
-                    旋轉: [${smoothedRot.map(v => (v * 180 / Math.PI).toFixed(1)).join('°, ')}°]<br>
-                    縮放: ${smoothedScale.toFixed(3)}<br>
-                    臉寬: ${faceWidth.toFixed(4)}
-                `;
-            }
+            // ===== 更新座標顯示 =====
+            updateCoordinateDisplay(smoothedRot, smoothedScale);
+        }
+        
+        // ==================== 更新座標顯示 ====================
+        function updateCoordinateDisplay(rotation, scale) {
+            if (!showDebug) return;
             
-            // Console 除錯（每 2 秒）
-            if (frameCount % 120 === 0) {
-                console.log('═══════════════════════════');
-                console.log('🎁 鼻樑盒子狀態');
-                console.log('  位置 XYZ:', smoothedPos.map(v => v.toFixed(3)));
-                console.log('  旋轉 P/Y/R:', smoothedRot.map(v => (v * 180 / Math.PI).toFixed(1)) + '°');
-                console.log('  縮放:', smoothedScale.toFixed(3));
-                console.log('  臉寬:', faceWidth.toFixed(4));
-            }
+            // 鼻樑原始座標
+            document.getElementById('noseCoords').innerHTML = `
+                X: ${noseRawCoords.x.toFixed(4)}<br>
+                Y: ${noseRawCoords.y.toFixed(4)}<br>
+                Z: ${noseRawCoords.z.toFixed(4)}
+            `;
+            
+            // Box 最終座標
+            document.getElementById('boxCoords').innerHTML = `
+                X: ${boxFinalCoords.x.toFixed(4)}<br>
+                Y: ${boxFinalCoords.y.toFixed(4)}<br>
+                Z: ${boxFinalCoords.z.toFixed(4)}<br>
+                旋轉: [${rotation.map(v => (v * 180 / Math.PI).toFixed(1)).join('°, ')}°]<br>
+                縮放: ${scale.toFixed(3)}
+            `;
+            
+            // 計算差異
+            const diffX = Math.abs(boxFinalCoords.x - (noseRawCoords.x - 0.5) * 2);
+            const diffY = Math.abs(boxFinalCoords.y - (-(noseRawCoords.y - 0.5) * 2));
+            const diffZ = Math.abs(boxFinalCoords.z - noseRawCoords.z);
+            
+            document.getElementById('coordDiff').innerHTML = `
+                ΔX: ${diffX.toFixed(4)}<br>
+                ΔY: ${diffY.toFixed(4)}<br>
+                ΔZ: ${diffZ.toFixed(4)}
+            `;
         }
         
         // ==================== 按鈕事件 ====================
