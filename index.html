@@ -368,88 +368,63 @@
         }
         
         // ==================== 更新鼻樑盒子位置（統一座標顯示）====================
-       // ==================== 更新鼻樑盒子位置（強制可見版）====================
+    // ==================== 更新鼻樑盒子位置（超大超近版）====================
 function updateNoseBridgeBox(landmarks) {
     if (!noseBridgeBox) return;
     
     noseBridgeBox.visible = showBox;
     if (!showBox) return;
     
-    // ===== 鼻樑關鍵特徵點 =====
     const noseBridge = landmarks[6];
     const leftEyeInner = landmarks[133];
     const rightEyeInner = landmarks[362];
     
-    // ⭐ 記錄鼻樑原始座標（MediaPipe 空間）
     noseRawCoords = {
         x: noseBridge.x,
         y: noseBridge.y,
         z: noseBridge.z
     };
     
-    // ⭐ Box 使用相同座標（顯示用）
     boxRawCoords = {
         x: noseBridge.x,
         y: noseBridge.y,
         z: noseBridge.z
     };
     
-    // ===== 轉換到 Three.js 空間 =====
+    // ===== 超簡單的轉換 =====
     const videoAspect = video.videoWidth / video.videoHeight;
     
-    const boxX = (noseBridge.x - 0.5) * 2;
-    const boxY = -(noseBridge.y - 0.5) * 2;
+    // 基本轉換
+    const boxX = (noseBridge.x - 0.5) * 2 * videoAspect * 0.5;
+    const boxY = -(noseBridge.y - 0.5) * 2 * 0.5;
+    const boxZ = -0.2;  // 固定在相機前方 20cm
     
-    // ⭐⭐⭐ 強制可見參數 ⭐⭐⭐
-    const XY_SCALE = 0.5;
-    const Z_DISTANCE = -0.3;  // 固定距離，確保在相機前方
+    noseBridgeBox.position.set(boxX, boxY, boxZ);
     
-    const correctedX = boxX * videoAspect * XY_SCALE;
-    const correctedY = boxY * XY_SCALE;
-    const correctedZ = Z_DISTANCE;  // 使用固定距離
-    
-    // ⭐ 不使用平滑，直接設置（測試用）
-    noseBridgeBox.position.set(
-        correctedX,
-        correctedY,
-        correctedZ
-    );
-    
-    // ===== 計算旋轉 =====
+    // 簡單旋轉
     const rawRoll = -Math.atan2(
         rightEyeInner.y - leftEyeInner.y,
         rightEyeInner.x - leftEyeInner.x
     );
+    noseBridgeBox.rotation.set(0, 0, rawRoll);
     
-    const eyeDistance = Math.abs(rightEyeInner.x - leftEyeInner.x);
-    const yawSensitivity = 0.4;
-    const rawYaw = (0.12 - eyeDistance) * yawSensitivity;
+    // ⭐ 超大尺寸
+    const BIG_SCALE = 5.0;
+    noseBridgeBox.scale.set(BIG_SCALE, BIG_SCALE, BIG_SCALE);
     
-    const noseToEyeY = noseBridge.y - ((leftEyeInner.y + rightEyeInner.y) / 2);
-    const pitchSensitivity = 0.3;
-    const rawPitch = noseToEyeY * pitchSensitivity;
-    
-    noseBridgeBox.rotation.set(rawPitch, rawYaw, rawRoll);
-    
-    // ===== 固定縮放（確保可見）=====
-    const FIXED_SCALE = 2.0;  // 固定大小
-    noseBridgeBox.scale.set(FIXED_SCALE, FIXED_SCALE, FIXED_SCALE);
-    
-    // ===== 更新座標顯示 =====
+    // 更新顯示
     updateCoordinateDisplay(
-        [rawPitch, rawYaw, rawRoll], 
-        FIXED_SCALE, 
-        [correctedX, correctedY, correctedZ]
+        [0, 0, rawRoll], 
+        BIG_SCALE, 
+        [boxX, boxY, boxZ]
     );
     
-    // ===== Console 調試信息 =====
     if (frameCount % 60 === 0) {
         console.log('═══════════════════════════');
-        console.log('📍 鼻樑座標:', noseRawCoords);
-        console.log('📦 Box Three.js 位置:', { x: correctedX, y: correctedY, z: correctedZ });
-        console.log('👁️ Box 可見性:', noseBridgeBox.visible);
-        console.log('📏 Box 縮放:', FIXED_SCALE);
-        console.log('🎥 相機位置:', camera.position);
+        console.log('📦 Box 位置:', { x: boxX.toFixed(3), y: boxY.toFixed(3), z: boxZ });
+        console.log('📏 Box 縮放:', BIG_SCALE, '(超大)');
+        console.log('👁️ 可見:', noseBridgeBox.visible);
+        console.log('🎨 不透明度:', noseBridgeBox.material.opacity);
     }
 }
         
