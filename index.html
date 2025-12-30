@@ -447,74 +447,80 @@
           // ⭐⭐⭐ 補償計算（終極版）⭐⭐⭐
           // ═══════════════════════════════════════════════
 
-          // Yaw 補償（終極強度）
-          const YAW_COMPENSATION_STRENGTH = 0.1;  // 終極
-          const yawCompensation = Math.pow(
-              Math.max(0.2, Math.min(1.0, yawFactor)),  // 最小值 0.2
-              YAW_COMPENSATION_STRENGTH
-          );
+         // ═══════════════════════════════════════════════
+// ⭐⭐⭐ 補償計算（修正版）⭐⭐⭐
+// ═══════════════════════════════════════════════
 
-          // Yaw 線性補償（更大的偏移）
-          const yawLinearOffset = (1.0 - yawFactor) * 0.25;  // 從 0.15 提高到 0.25
+// Yaw 補償
+const YAW_COMPENSATION_STRENGTH = 0.15;
+const yawCompensation = Math.pow(
+    Math.max(0.3, Math.min(1.0, yawFactor)),
+    YAW_COMPENSATION_STRENGTH
+);
 
-          // Pitch 補償（終極強度）
-          const PITCH_COMPENSATION_STRENGTH = 2.0;  // 終極
-          const pitchCompensation = Math.pow(
-              Math.max(0.3, Math.min(1.8, pitchFactor)),
-              -PITCH_COMPENSATION_STRENGTH
-          );
+// ⭐ 修正：線性偏移應該是負值（讓 Z 更負 = 更近）
+const yawLinearOffset = -(1.0 - yawFactor) * 0.10;  // 負號！從 0.15 降到 0.10
 
-          // Pitch 線性補償（更大的偏移）
-          const pitchLinearOffset = Math.max(0, pitchFactor - 1.0) * 0.20;  // 從 0.12 提高到 0.20
+// Pitch 補償
+const PITCH_COMPENSATION_STRENGTH = 1.5;
+const pitchCompensation = Math.pow(
+    Math.max(0.4, Math.min(1.6, pitchFactor)),
+    -PITCH_COMPENSATION_STRENGTH
+);
 
-          // 組合補償
-          const combinedCompensation = yawCompensation * pitchCompensation;
+// ⭐ 修正：線性偏移應該是負值
+const pitchLinearOffset = -Math.max(0, pitchFactor - 1.0) * 0.08;  // 負號！從 0.12 降到 0.08
 
-          // 終極範圍
-          const MIN_COMPENSATION = 0.1;   // 終極最小值
-          const MAX_COMPENSATION = 1.8;   // 終極最大值
-          const clampedCompensation = Math.max(
-              MIN_COMPENSATION,
-              Math.min(MAX_COMPENSATION, combinedCompensation)
-          );
+// 組合補償
+const combinedCompensation = yawCompensation * pitchCompensation;
 
-          // ═══════════════════════════════════════════════
-          // ⭐⭐⭐ 位置計算（終極版）⭐⭐⭐
-          // ═══════════════════════════════════════════════
+// 補償範圍
+const MIN_COMPENSATION = 0.15;
+const MAX_COMPENSATION = 1.6;
+const clampedCompensation = Math.max(
+    MIN_COMPENSATION,
+    Math.min(MAX_COMPENSATION, combinedCompensation)
+);
 
-          const rawX = (noseBridge.x - 0.5) * 2;
-          const rawY = -(noseBridge.y - 0.5) * 2;
+// ═══════════════════════════════════════════════
+// ⭐⭐⭐ 位置計算（修正版）⭐⭐⭐
+// ═══════════════════════════════════════════════
 
-          const XY_SCALE = 0.5;
-          const correctedX = rawX * videoAspect * XY_SCALE;
-          const correctedY = rawY * XY_SCALE;
+const rawX = (noseBridge.x - 0.5) * 2;
+const rawY = -(noseBridge.y - 0.5) * 2;
 
-          const avgZ = (
-              noseBridge.z +
-              leftEyeInner.z +
-              rightEyeInner.z +
-              noseTip.z
-          ) / 4;
+const XY_SCALE = 0.5;
+const correctedX = rawX * videoAspect * XY_SCALE;
+const correctedY = rawY * XY_SCALE;
 
-          const BASE_DISTANCE = 0.15;         // 終極近
-          const DEPTH_MULTIPLIER = 5.0;       // 終極倍數
+const avgZ = (
+    noseBridge.z +
+    leftEyeInner.z +
+    rightEyeInner.z +
+    noseTip.z
+) / 4;
 
-          // 應用雙重補償
-          const compensatedZ = avgZ * clampedCompensation;
-          const totalLinearOffset = yawLinearOffset + pitchLinearOffset;
-          const dynamicZ = -BASE_DISTANCE - (compensatedZ * DEPTH_MULTIPLIER) + totalLinearOffset;
+const BASE_DISTANCE = 0.20;         // 回到合理值
+const DEPTH_MULTIPLIER = 3.5;       // 調整倍數
 
-          // 平滑處理
-          const smoothedPos = smoothFilter.smooth(
-              [correctedX, correctedY, dynamicZ],
-              'boxPosition'
-          );
+// ⭐ 修正：線性偏移是負值，直接相加即可
+const compensatedZ = avgZ * clampedCompensation;
+const totalLinearOffset = yawLinearOffset + pitchLinearOffset;  // 兩個都是負值
+const dynamicZ = -BASE_DISTANCE - (compensatedZ * DEPTH_MULTIPLIER) + totalLinearOffset;
+//                ↑ 負的基礎    ↑ 這部分通常是正的（因為 compensatedZ 是負的） ↑ 負偏移讓 Z 更負
 
-          noseBridgeBox.position.set(
-              smoothedPos[0],
-              smoothedPos[1],
-              smoothedPos[2]
-          );
+// 平滑處理
+const smoothedPos = smoothFilter.smooth(
+    [correctedX, correctedY, dynamicZ],
+    'boxPosition'
+);
+
+noseBridgeBox.position.set(
+    smoothedPos[0],
+    smoothedPos[1],
+    smoothedPos[2]
+);
+
 
           // ═══════════════════════════════════════════════
           // ⭐⭐⭐ 縮放計算 ⭐⭐⭐
