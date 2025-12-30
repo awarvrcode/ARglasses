@@ -439,51 +439,43 @@
           // 組合 Pitch 因子（三種方法加權平均）
           const pitchFactor = (pitchFromNoseZ * 0.5 + pitchFromY * 0.3 + pitchFromHeight * 0.2);
 
-          // ═══════════════════════════════════════════════
-          // ⭐⭐⭐ 補償計算 ⭐⭐⭐
-          // ═══════════════════════════════════════════════
-
-          // ═══════════════════════════════════════════════
-          // ⭐⭐⭐ 補償計算（終極版）⭐⭐⭐
-          // ═══════════════════════════════════════════════
-
-         // ═══════════════════════════════════════════════
-// ⭐⭐⭐ 補償計算（修正版）⭐⭐⭐
-// ═══════════════════════════════════════════════
+        // ═══════════════════════════════════════════════
+        // ⭐⭐⭐ 補償計算（保守安全版）⭐⭐⭐
+        // ═══════════════════════════════════════════════
 
 // Yaw 補償
-const YAW_COMPENSATION_STRENGTH = 0.15;
+const YAW_COMPENSATION_STRENGTH = 0.2;
 const yawCompensation = Math.pow(
-    Math.max(0.3, Math.min(1.0, yawFactor)),
+    Math.max(0.4, Math.min(1.0, yawFactor)),
     YAW_COMPENSATION_STRENGTH
 );
 
-// ⭐ 修正：線性偏移應該是負值（讓 Z 更負 = 更近）
-const yawLinearOffset = -(1.0 - yawFactor) * 0.10;  // 負號！從 0.15 降到 0.10
+// Yaw 線性偏移（較小的值）
+const yawLinearOffset = -(1.0 - yawFactor) * 0.05;  // 小心的偏移
 
 // Pitch 補償
-const PITCH_COMPENSATION_STRENGTH = 1.5;
+const PITCH_COMPENSATION_STRENGTH = 1.2;
 const pitchCompensation = Math.pow(
-    Math.max(0.4, Math.min(1.6, pitchFactor)),
+    Math.max(0.5, Math.min(1.5, pitchFactor)),
     -PITCH_COMPENSATION_STRENGTH
 );
 
-// ⭐ 修正：線性偏移應該是負值
-const pitchLinearOffset = -Math.max(0, pitchFactor - 1.0) * 0.08;  // 負號！從 0.12 降到 0.08
+// Pitch 線性偏移（較小的值）
+const pitchLinearOffset = -Math.max(0, pitchFactor - 1.0) * 0.04;  // 小心的偏移
 
 // 組合補償
 const combinedCompensation = yawCompensation * pitchCompensation;
 
 // 補償範圍
-const MIN_COMPENSATION = 0.15;
-const MAX_COMPENSATION = 1.6;
+const MIN_COMPENSATION = 0.2;
+const MAX_COMPENSATION = 1.5;
 const clampedCompensation = Math.max(
     MIN_COMPENSATION,
     Math.min(MAX_COMPENSATION, combinedCompensation)
 );
 
 // ═══════════════════════════════════════════════
-// ⭐⭐⭐ 位置計算（修正版）⭐⭐⭐
+// ⭐⭐⭐ 位置計算（保守安全版）⭐⭐⭐
 // ═══════════════════════════════════════════════
 
 const rawX = (noseBridge.x - 0.5) * 2;
@@ -500,18 +492,20 @@ const avgZ = (
     noseTip.z
 ) / 4;
 
-const BASE_DISTANCE = 0.20;         // 回到合理值
-const DEPTH_MULTIPLIER = 3.5;       // 調整倍數
+const BASE_DISTANCE = 0.22;         // 保守值
+const DEPTH_MULTIPLIER = 3.0;       // 保守值
 
-// ⭐ 修正：線性偏移是負值，直接相加即可
+// 應用補償和偏移
 const compensatedZ = avgZ * clampedCompensation;
-const totalLinearOffset = yawLinearOffset + pitchLinearOffset;  // 兩個都是負值
+const totalLinearOffset = yawLinearOffset + pitchLinearOffset;
 const dynamicZ = -BASE_DISTANCE - (compensatedZ * DEPTH_MULTIPLIER) + totalLinearOffset;
-//                ↑ 負的基礎    ↑ 這部分通常是正的（因為 compensatedZ 是負的） ↑ 負偏移讓 Z 更負
+
+// ⭐ 安全檢查：確保 Z 值在合理範圍內
+const safeZ = Math.max(-0.8, Math.min(-0.05, dynamicZ));  // 限制在 -0.8 到 -0.05 之間
 
 // 平滑處理
 const smoothedPos = smoothFilter.smooth(
-    [correctedX, correctedY, dynamicZ],
+    [correctedX, correctedY, safeZ],  // 使用安全的 Z 值
     'boxPosition'
 );
 
