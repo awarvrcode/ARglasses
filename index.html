@@ -217,7 +217,7 @@
     <!-- Three.js -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js" crossorigin="anonymous"></script>
 
-  <script>
+    <script>
         // ==================== 全域變數 ====================
         const video = document.getElementById('video');
         const canvas = document.getElementById('output');
@@ -233,7 +233,7 @@
         
         // 用於顯示的座標資訊（統一使用 MediaPipe 座標空間）
         let noseRawCoords = { x: 0, y: 0, z: 0 };
-        let boxRawCoords = { x: 0, y: 0, z: 0 };  // 轉換前的座標
+        let boxRawCoords = { x: 0, y: 0, z: 0 };
         
         // ==================== 平滑濾波器 ====================
         class SmoothFilter {
@@ -367,207 +367,215 @@
             renderer.render(scene, camera);
         }
         
-        // ==================== 更新鼻樑盒子位置（統一座標顯示）====================
-      // ==================== 更新鼻樑盒子位置（全方位完整補償）====================
-      function updateNoseBridgeBox(landmarks) {
-          if (!noseBridgeBox) return;
+        // ==================== 更新鼻樑盒子位置（全方位完整補償）====================
+        function updateNoseBridgeBox(landmarks) {
+            if (!noseBridgeBox) return;
 
-          noseBridgeBox.visible = showBox;
-          if (!showBox) return;
+            noseBridgeBox.visible = showBox;
+            if (!showBox) return;
 
-          // ===== 關鍵特徵點 =====
-          const noseBridge = landmarks[6];
-          const noseTip = landmarks[1];
-          const leftEyeInner = landmarks[133];
-          const rightEyeInner = landmarks[362];
-          const leftEyeOuter = landmarks[33];
-          const rightEyeOuter = landmarks[263];
-          const foreheadCenter = landmarks[10];
-          const chinBottom = landmarks[152];
+            // ===== 關鍵特徵點 =====
+            const noseBridge = landmarks[6];
+            const noseTip = landmarks[1];
+            const leftEyeInner = landmarks[133];
+            const rightEyeInner = landmarks[362];
+            const leftEyeOuter = landmarks[33];
+            const rightEyeOuter = landmarks[263];
+            const foreheadCenter = landmarks[10];
+            const chinBottom = landmarks[152];
 
-          noseRawCoords = {
-              x: noseBridge.x,
-              y: noseBridge.y,
-              z: noseBridge.z
-          };
+            noseRawCoords = {
+                x: noseBridge.x,
+                y: noseBridge.y,
+                z: noseBridge.z
+            };
 
-          boxRawCoords = {
-              x: noseBridge.x,
-              y: noseBridge.y,
-              z: noseBridge.z
-          };
+            boxRawCoords = {
+                x: noseBridge.x,
+                y: noseBridge.y,
+                z: noseBridge.z
+            };
 
-          const videoAspect = video.videoWidth / video.videoHeight;
+            const videoAspect = video.videoWidth / video.videoHeight;
 
-          // ═══════════════════════════════════════════════
-          // ⭐⭐⭐ YAW 檢測（左右轉頭）⭐⭐⭐
-          // ═══════════════════════════════════════════════
+            // ═══════════════════════════════════════════════
+            // ⭐⭐⭐ YAW 檢測（左右轉頭）⭐⭐⭐
+            // ═══════════════════════════════════════════════
 
-          // 方法 1：眼睛間距
-          const eyeDistanceX = Math.abs(rightEyeInner.x - leftEyeInner.x);
-          const normalEyeDistance = 0.1;
-          const yawFromEyeDistance = eyeDistanceX / normalEyeDistance;
+            // 方法 1：眼睛間距
+            const eyeDistanceX = Math.abs(rightEyeInner.x - leftEyeInner.x);
+            const normalEyeDistance = 0.1;
+            const yawFromEyeDistance = eyeDistanceX / normalEyeDistance;
 
-          // 方法 2：左右眼的 Z 深度差異
-          const eyeZDiff = Math.abs(leftEyeInner.z - rightEyeInner.z);
-          const normalEyeZDiff = 0.01;
-          const yawFromZDiff = 1.0 - Math.min(1.0, eyeZDiff / normalEyeZDiff);
+            // 方法 2：左右眼的 Z 深度差異
+            const eyeZDiff = Math.abs(leftEyeInner.z - rightEyeInner.z);
+            const normalEyeZDiff = 0.01;
+            const yawFromZDiff = 1.0 - Math.min(1.0, eyeZDiff / normalEyeZDiff);
 
-          // 組合 Yaw 因子（兩種方法平均）
-          const yawFactor = (yawFromEyeDistance * 0.7 + yawFromZDiff * 0.3);
+            // 組合 Yaw 因子（兩種方法平均）
+            const yawFactor = (yawFromEyeDistance * 0.7 + yawFromZDiff * 0.3);
 
-          // ═══════════════════════════════════════════════
-          // ⭐⭐⭐ PITCH 檢測（上下點頭）⭐⭐⭐
-          // ═══════════════════════════════════════════════
+            // ═══════════════════════════════════════════════
+            // ⭐⭐⭐ PITCH 檢測（上下點頭）⭐⭐⭐
+            // ═══════════════════════════════════════════════
 
-          // 方法 1：鼻尖和鼻樑的 Z 深度差
-          const noseZDiff = Math.abs(noseTip.z - noseBridge.z);
-          const normalNoseZDiff = 0.02;
-          const pitchFromNoseZ = noseZDiff / normalNoseZDiff;
+            // 方法 1：鼻尖和鼻樑的 Z 深度差
+            const noseZDiff = Math.abs(noseTip.z - noseBridge.z);
+            const normalNoseZDiff = 0.02;
+            const pitchFromNoseZ = noseZDiff / normalNoseZDiff;
 
-          // 方法 2：眼睛到鼻樑的 Y 距離
-          const eyeCenterY = (leftEyeInner.y + rightEyeInner.y) / 2;
-          const eyeToNoseY = Math.abs(noseBridge.y - eyeCenterY);
-          const normalEyeToNoseY = 0.04;
-          const pitchFromY = eyeToNoseY / normalEyeToNoseY;
+            // 方法 2：眼睛到鼻樑的 Y 距離
+            const eyeCenterY = (leftEyeInner.y + rightEyeInner.y) / 2;
+            const eyeToNoseY = Math.abs(noseBridge.y - eyeCenterY);
+            const normalEyeToNoseY = 0.04;
+            const pitchFromY = eyeToNoseY / normalEyeToNoseY;
 
-          // 方法 3：臉部整體高度
-          const faceHeightY = Math.abs(foreheadCenter.y - chinBottom.y);
-          const normalFaceHeight = 0.35;
-          const pitchFromHeight = normalFaceHeight / faceHeightY;  // 反向（抬頭時變小）
+            // 方法 3：臉部整體高度
+            const faceHeightY = Math.abs(foreheadCenter.y - chinBottom.y);
+            const normalFaceHeight = 0.35;
+            const pitchFromHeight = normalFaceHeight / faceHeightY;
 
-          // 組合 Pitch 因子（三種方法加權平均）
-          const pitchFactor = (pitchFromNoseZ * 0.5 + pitchFromY * 0.3 + pitchFromHeight * 0.2);
+            // 組合 Pitch 因子（三種方法加權平均）
+            const pitchFactor = (pitchFromNoseZ * 0.5 + pitchFromY * 0.3 + pitchFromHeight * 0.2);
 
-        // ═══════════════════════════════════════════════
-        // ⭐⭐⭐ 補償計算（保守安全版）⭐⭐⭐
-        // ═══════════════════════════════════════════════
+            // ═══════════════════════════════════════════════
+            // ⭐⭐⭐ 補償計算（保守安全版）⭐⭐⭐
+            // ═══════════════════════════════════════════════
 
-// Yaw 補償
-const YAW_COMPENSATION_STRENGTH = 0.2;
-const yawCompensation = Math.pow(
-    Math.max(0.4, Math.min(1.0, yawFactor)),
-    YAW_COMPENSATION_STRENGTH
-);
+            // Yaw 補償
+            const YAW_COMPENSATION_STRENGTH = 0.2;
+            const yawCompensation = Math.pow(
+                Math.max(0.4, Math.min(1.0, yawFactor)),
+                YAW_COMPENSATION_STRENGTH
+            );
 
-// Yaw 線性偏移（較小的值）
-const yawLinearOffset = -(1.0 - yawFactor) * 0.05;  // 小心的偏移
+            // Yaw 線性偏移（較小的值）
+            const yawLinearOffset = -(1.0 - yawFactor) * 0.05;
 
-// Pitch 補償
-const PITCH_COMPENSATION_STRENGTH = 1.2;
-const pitchCompensation = Math.pow(
-    Math.max(0.5, Math.min(1.5, pitchFactor)),
-    -PITCH_COMPENSATION_STRENGTH
-);
+            // Pitch 補償
+            const PITCH_COMPENSATION_STRENGTH = 1.2;
+            const pitchCompensation = Math.pow(
+                Math.max(0.5, Math.min(1.5, pitchFactor)),
+                -PITCH_COMPENSATION_STRENGTH
+            );
 
-// Pitch 線性偏移（較小的值）
-const pitchLinearOffset = -Math.max(0, pitchFactor - 1.0) * 0.04;  // 小心的偏移
+            // Pitch 線性偏移（較小的值）
+            const pitchLinearOffset = -Math.max(0, pitchFactor - 1.0) * 0.04;
 
-// 組合補償
-const combinedCompensation = yawCompensation * pitchCompensation;
+            // 組合補償
+            const combinedCompensation = yawCompensation * pitchCompensation;
 
-// 補償範圍
-const MIN_COMPENSATION = 0.2;
-const MAX_COMPENSATION = 1.5;
-const clampedCompensation = Math.max(
-    MIN_COMPENSATION,
-    Math.min(MAX_COMPENSATION, combinedCompensation)
-);
+            // 補償範圍
+            const MIN_COMPENSATION = 0.2;
+            const MAX_COMPENSATION = 1.5;
+            const clampedCompensation = Math.max(
+                MIN_COMPENSATION,
+                Math.min(MAX_COMPENSATION, combinedCompensation)
+            );
 
-// ═══════════════════════════════════════════════
-// ⭐⭐⭐ 位置計算（保守安全版）⭐⭐⭐
-// ═══════════════════════════════════════════════
+            // ═══════════════════════════════════════════════
+            // ⭐⭐⭐ 位置計算（保守安全版）⭐⭐⭐
+            // ═══════════════════════════════════════════════
 
-const rawX = (noseBridge.x - 0.5) * 2;
-const rawY = -(noseBridge.y - 0.5) * 2;
+            const rawX = (noseBridge.x - 0.5) * 2;
+            const rawY = -(noseBridge.y - 0.5) * 2;
 
-const XY_SCALE = 0.5;
-const correctedX = rawX * videoAspect * XY_SCALE;
-const correctedY = rawY * XY_SCALE;
+            const XY_SCALE = 0.5;
+            const correctedX = rawX * videoAspect * XY_SCALE;
+            const correctedY = rawY * XY_SCALE;
 
-const avgZ = (
-    noseBridge.z +
-    leftEyeInner.z +
-    rightEyeInner.z +
-    noseTip.z
-) / 4;
+            const avgZ = (
+                noseBridge.z +
+                leftEyeInner.z +
+                rightEyeInner.z +
+                noseTip.z
+            ) / 4;
 
-const BASE_DISTANCE = 0.22;         // 保守值
-const DEPTH_MULTIPLIER = 3.0;       // 保守值
+            const BASE_DISTANCE = 0.22;
+            const DEPTH_MULTIPLIER = 3.0;
 
-// 應用補償和偏移
-const compensatedZ = avgZ * clampedCompensation;
-const totalLinearOffset = yawLinearOffset + pitchLinearOffset;
-const dynamicZ = -BASE_DISTANCE - (compensatedZ * DEPTH_MULTIPLIER) + totalLinearOffset;
+            // 應用補償和偏移
+            const compensatedZ = avgZ * clampedCompensation;
+            const totalLinearOffset = yawLinearOffset + pitchLinearOffset;
+            const dynamicZ = -BASE_DISTANCE - (compensatedZ * DEPTH_MULTIPLIER) + totalLinearOffset;
 
-// ⭐ 安全檢查：確保 Z 值在合理範圍內
-const safeZ = Math.max(-0.8, Math.min(-0.05, dynamicZ));  // 限制在 -0.8 到 -0.05 之間
+            // ⭐ 安全檢查：確保 Z 值在合理範圍內
+            const safeZ = Math.max(-0.8, Math.min(-0.05, dynamicZ));
 
-// 平滑處理
-const smoothedPos = smoothFilter.smooth(
-    [correctedX, correctedY, safeZ],  // 使用安全的 Z 值
-    'boxPosition'
-);
+            // 平滑處理
+            const smoothedPos = smoothFilter.smooth(
+                [correctedX, correctedY, safeZ],
+                'boxPosition'
+            );
 
-noseBridgeBox.position.set(
-    smoothedPos[0],
-    smoothedPos[1],
-    smoothedPos[2]
-);
+            noseBridgeBox.position.set(
+                smoothedPos[0],
+                smoothedPos[1],
+                smoothedPos[2]
+            );
 
+            // ═══════════════════════════════════════════════
+            // ⭐⭐⭐ 縮放計算 ⭐⭐⭐
+            // ═══════════════════════════════════════════════
 
-          // ═══════════════════════════════════════════════
-          // ⭐⭐⭐ 縮放計算 ⭐⭐⭐
-          // ═══════════════════════════════════════════════
+            const eyeDistanceY = Math.abs(rightEyeOuter.y - leftEyeOuter.y);
+            const faceSize2D = Math.sqrt(
+                Math.pow(eyeDistanceX * videoAspect, 2) +
+                Math.pow(eyeDistanceY, 2)
+            );
 
-          const eyeDistanceY = Math.abs(rightEyeOuter.y - leftEyeOuter.y);
-          const faceSize2D = Math.sqrt(
-              Math.pow(eyeDistanceX * videoAspect, 2) +
-              Math.pow(eyeDistanceY, 2)
-          );
+            const depthFactor = 1.0 / (1.0 + avgZ * 1.5);
 
-          const depthFactor = 1.0 / (1.0 + avgZ * 1.5);
+            const BASE_SCALE = 8.0;
+            const dynamicScale = faceSize2D * BASE_SCALE * depthFactor;
 
-          const BASE_SCALE = 8.0;
-          const dynamicScale = faceSize2D * BASE_SCALE * depthFactor;
+            const smoothedScale = smoothFilter.smooth(dynamicScale, 'boxScale');
+            noseBridgeBox.scale.set(smoothedScale, smoothedScale, smoothedScale);
 
-          const smoothedScale = smoothFilter.smooth(dynamicScale, 'boxScale');
-          noseBridgeBox.scale.set(smoothedScale, smoothedScale, smoothedScale);
+            // ═══════════════════════════════════════════════
+            // ⭐⭐⭐ 旋轉計算（簡化版）⭐⭐⭐
+            // ═══════════════════════════════════════════════
+            
+            // 計算簡單的旋轉值用於顯示
+            const rotationX = 0;
+            const rotationY = 0;
+            const rotationZ = 0;
+            const smoothedRot = [rotationX, rotationY, rotationZ];
 
-          // 更新顯示
-          updateCoordinateDisplay(smoothedRot, smoothedScale, smoothedPos);
+            // 更新顯示
+            updateCoordinateDisplay(smoothedRot, smoothedScale, smoothedPos);
 
-          // ═══════════════════════════════════════════════
-          // 📊 詳細調試信息
-          // ═══════════════════════════════════════════════
+            // ═══════════════════════════════════════════════
+            // 📊 詳細調試信息
+            // ═══════════════════════════════════════════════
 
-          if (frameCount % 60 === 0) {
-              console.log('═══════════════════════════════════════');
-              console.log('🔍 Yaw 檢測（左右轉頭）:');
-              console.log('  眼距方法:', yawFromEyeDistance.toFixed(3), yawFromEyeDistance < 0.9 ? '← 轉頭' : '');
-              console.log('  深度方法:', yawFromZDiff.toFixed(3));
-              console.log('  Yaw 綜合:', yawFactor.toFixed(3), yawFactor < 0.9 ? '← 檢測到轉頭' : '(正面)');
-              console.log('---');
-              console.log('🔍 Pitch 檢測（上下點頭）:');
-              console.log('  鼻子深度:', pitchFromNoseZ.toFixed(3), pitchFromNoseZ > 1.1 ? '← 點頭' : '');
-              console.log('  眼鼻距離:', pitchFromY.toFixed(3));
-              console.log('  臉部高度:', pitchFromHeight.toFixed(3));
-              console.log('  Pitch 綜合:', pitchFactor.toFixed(3), pitchFactor > 1.1 ? '← 檢測到點頭' : '(正面)');
-              console.log('---');
-              console.log('🛡️ 補償計算:');
-              console.log('  Yaw 補償:', yawCompensation.toFixed(3), yawCompensation < 0.95 ? '✓ 啟動' : '');
-              console.log('  Pitch 補償:', pitchCompensation.toFixed(3), Math.abs(pitchCompensation - 1.0) > 0.05 ? '✓ 啟動' : '');
-              console.log('  組合補償:', combinedCompensation.toFixed(3));
-              console.log('  限制後:', clampedCompensation.toFixed(3), '(範圍: 0.5-1.3)');
-              console.log('---');
-              console.log('📦 最終結果:');
-              console.log('  原始 Z:', avgZ.toFixed(4));
-              console.log('  補償後 Z:', compensatedZ.toFixed(4));
-              console.log('  Box Z:', smoothedPos[2].toFixed(4));
-              console.log('  縮放:', smoothedScale.toFixed(3));
-              console.log('═══════════════════════════════════════');
-          }
-      }
+            if (frameCount % 60 === 0) {
+                console.log('═══════════════════════════════════════');
+                console.log('🔍 Yaw 檢測（左右轉頭）:');
+                console.log('  眼距方法:', yawFromEyeDistance.toFixed(3), yawFromEyeDistance < 0.9 ? '← 轉頭' : '');
+                console.log('  深度方法:', yawFromZDiff.toFixed(3));
+                console.log('  Yaw 綜合:', yawFactor.toFixed(3), yawFactor < 0.9 ? '← 檢測到轉頭' : '(正面)');
+                console.log('---');
+                console.log('🔍 Pitch 檢測（上下點頭）:');
+                console.log('  鼻子深度:', pitchFromNoseZ.toFixed(3), pitchFromNoseZ > 1.1 ? '← 點頭' : '');
+                console.log('  眼鼻距離:', pitchFromY.toFixed(3));
+                console.log('  臉部高度:', pitchFromHeight.toFixed(3));
+                console.log('  Pitch 綜合:', pitchFactor.toFixed(3), pitchFactor > 1.1 ? '← 檢測到點頭' : '(正面)');
+                console.log('---');
+                console.log('🛡️ 補償計算:');
+                console.log('  Yaw 補償:', yawCompensation.toFixed(3), yawCompensation < 0.95 ? '✓ 啟動' : '');
+                console.log('  Pitch 補償:', pitchCompensation.toFixed(3), Math.abs(pitchCompensation - 1.0) > 0.05 ? '✓ 啟動' : '');
+                console.log('  組合補償:', combinedCompensation.toFixed(3));
+                console.log('  限制後:', clampedCompensation.toFixed(3), '(範圍: 0.2-1.5)');
+                console.log('---');
+                console.log('📦 最終結果:');
+                console.log('  原始 Z:', avgZ.toFixed(4));
+                console.log('  補償後 Z:', compensatedZ.toFixed(4));
+                console.log('  Box Z:', smoothedPos[2].toFixed(4));
+                console.log('  縮放:', smoothedScale.toFixed(3));
+                console.log('═══════════════════════════════════════');
+            }
+        }
         
         // ==================== 更新座標顯示（統一使用 MediaPipe 座標）====================
         function updateCoordinateDisplay(rotation, scale, threejsPos) {
@@ -673,6 +681,6 @@ noseBridgeBox.position.set(
         } else {
             init();
         }
-</script>
+    </script>
 </body>
 </html>
