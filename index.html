@@ -410,8 +410,15 @@
       const containerW = window.innerWidth;
       const containerH = window.innerHeight;
 
-      const nosePx = landmarkToScreenPx(noseBridge.x, noseBridge.y, containerW, containerH, mediaW, mediaH);
-      updateDynamicPositionSmoothing(nosePx);
+      // 用雙眼外角中心當 anchor（比鼻樑更像眼鏡中心）
+const eyeCenterNx = (leftEyeOuter.x + rightEyeOuter.x) / 2;
+const eyeCenterNy = (leftEyeOuter.y + rightEyeOuter.y) / 2;
+
+// 眼鏡通常要稍微往上（依臉型/模型可調）
+const eyeCenterUp = -0.015; // normalized y，負值代表往上
+const anchorPx = landmarkToScreenPx(eyeCenterNx, eyeCenterNy + eyeCenterUp, containerW, containerH, mediaW, mediaH);
+ 
+      updateDynamicPositionSmoothing(anchorPx);
 
       // screen -> NDC
       const ndcX = (nosePx.x / containerW) * 2 - 1;
@@ -421,8 +428,19 @@
       const v = new THREE.Vector3(ndcX, ndcY, 0.5).unproject(camera);
       const dir = v.clone().sub(camera.position).normalize();
 
-      const PLANE_DISTANCE = 0.35;
-      const targetPos = camera.position.clone().add(dir.multiplyScalar(PLANE_DISTANCE));
+      // ===== 動態距離（讓模型貼近臉，而不是黏在鏡頭）=====
+      // eyeDistPx：越大代表臉越近
+       const minD = 0.18;   // 最近距離（太小會穿模或太貼鏡頭）
+       const k = 55;        // 主要控制：越大代表同樣 eyeDist 下距離越遠（需依你的 FOV/裝置調）
+       const b = 0.10;      // 基礎偏移：整體往近/遠移
+
+       let dynamicD = (k / Math.max(40, eyeDistPx)) + b; // 避免除以太小
+       dynamicD = Math.max(minD, Math.min(maxD, dynamicD));
+
+      const targetPos = camera.position.clone().add(dir.multiplyScalar(dynamicD));
+
+
+
       const smoothedPos = smoothFilter.smooth([targetPos.x, targetPos.y, targetPos.z], "boxPosition");
 
       // rotation from 2D geometry
