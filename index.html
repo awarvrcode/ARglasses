@@ -421,8 +421,8 @@ const anchorPx = landmarkToScreenPx(eyeCenterNx, eyeCenterNy + eyeCenterUp, cont
       updateDynamicPositionSmoothing(anchorPx);
 
       // screen -> NDC
-      const ndcX = (nosePx.x / containerW) * 2 - 1;
-      const ndcY = -((nosePx.y / containerH) * 2 - 1);
+       const ndcX = (anchorPx.x / containerW) * 2 - 1;
+       const ndcY = -((anchorPx.y / containerH) * 2 - 1);
 
       // unproject -> ray -> plane
       const v = new THREE.Vector3(ndcX, ndcY, 0.5).unproject(camera);
