@@ -3,14 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>WebAR｜GLB 眼鏡貼臉版（雙眼中心錨點 + 動態深度 + 動態平滑 + Unwrap + Yaw 修正）</title>
+  <title>WebAR｜GLB 眼鏡貼臉版（NDC→CameraSpace 投影）</title>
 
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { margin: 0; padding: 0; overflow: hidden; background: #000; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
     #container { position: relative; width: 100vw; height: 100vh; }
 
-    /* 相機畫面：滿版 cover + 自拍鏡像 */
     video {
       position: absolute;
       top: 0; left: 0;
@@ -19,7 +18,6 @@
       transform: scaleX(-1);
     }
 
-    /* Three.js：同樣鏡像，確保 overlay 方向一致 */
     #output {
       position: absolute;
       top: 0; left: 0;
@@ -44,7 +42,7 @@
 
     .controls {
       position: absolute;
-      bottom: 22px;
+      bottom: 18px;
       left: 50%;
       transform: translateX(-50%);
       display: flex;
@@ -80,7 +78,7 @@
       font-family: ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       box-shadow: 0 2px 10px rgba(0,0,0,0.35);
       white-space: pre;
-      min-width: 190px;
+      min-width: 210px;
     }
 
     .debug-info {
@@ -105,7 +103,7 @@
 
     @media (max-width: 768px) {
       button { padding: 11px 14px; font-size: 13px; }
-      .controls { bottom: 16px; gap: 8px; }
+      .controls { bottom: 14px; gap: 8px; }
       .debug-info { font-size: 11px; max-width: 360px; }
     }
   </style>
@@ -141,28 +139,24 @@
 
     <div class="debug-info" id="debugInfo">
       <div class="section">
-        <div class="label">🎯 Anchor（雙眼中心）</div>
+        <div class="label">🎯 Anchor / NDC</div>
         <div class="value" id="anchorInfo">--</div>
       </div>
       <div class="section">
-        <div class="label">📍 鼻樑原始座標 (MediaPipe)</div>
-        <div class="value" id="noseCoords">--</div>
+        <div class="label">📦 3D Position / Depth / Scale</div>
+        <div class="value" id="posInfo">--</div>
       </div>
       <div class="section">
-        <div class="label">📦 Three.js 位置 / 深度 / 縮放</div>
-        <div class="value" id="boxCoords">--</div>
-      </div>
-      <div class="section">
-        <div class="label">🧭 旋轉（roll / yaw / pitch）</div>
+        <div class="label">🧭 Rotation（roll / yaw / pitch）</div>
         <div class="diff" id="rotInfo">--</div>
       </div>
       <div class="section">
-        <div class="label">🏎️ 動態平滑（速度→位置係數）</div>
+        <div class="label">🏎️ Dynamic Smoothing</div>
         <div class="value" id="smoothInfo">--</div>
       </div>
       <div class="section">
-        <div class="label">🕶️ 模型微調參數</div>
-        <div class="value" id="modelTuning">--</div>
+        <div class="label">🕶️ Tuning</div>
+        <div class="value" id="tuningInfo">--</div>
       </div>
     </div>
   </div>
@@ -182,103 +176,90 @@
     const video = document.getElementById("video");
     const canvas = document.getElementById("output");
     const loading = document.getElementById("loading");
-
     const infoDiv = document.getElementById("info");
     const debugInfoDiv = document.getElementById("debugInfo");
 
     const anchorInfoEl = document.getElementById("anchorInfo");
-    const noseCoordsEl = document.getElementById("noseCoords");
-    const boxCoordsEl  = document.getElementById("boxCoords");
-    const rotInfoEl    = document.getElementById("rotInfo");
+    const posInfoEl = document.getElementById("posInfo");
+    const rotInfoEl = document.getElementById("rotInfo");
     const smoothInfoEl = document.getElementById("smoothInfo");
-    const modelTuningEl = document.getElementById("modelTuning");
+    const tuningInfoEl = document.getElementById("tuningInfo");
 
-    // ==================== 參數區（你最常調這裡）====================
-    // (1) Anchor 往上微調：眼鏡中心通常略高於「雙眼外角中心」
-    const ANCHOR_UP_NORM = -0.015; // normalized y，負值=往上（建議 -0.010 ~ -0.025）
+    // ==================== 你最常調的參數 ====================
+    // Anchor 往上（眼鏡中心通常略高於兩眼外角中心）
+    const ANCHOR_UP_NORM = -0.015; // -0.010 ~ -0.025
 
-    // (2) 動態深度：讓眼鏡隨臉靠近/遠離，不黏鏡頭
-    const DEPTH_MIN = 0.18;  // 最近距離（太小會像貼鏡頭/穿模）
-    const DEPTH_MAX = 0.65;  // 最遠距離（太大會飄）
-    const DEPTH_K   = 55;    // 主要係數：越大整體越遠（依裝置可調 40~80）
-    const DEPTH_B   = 0.10;  // 基礎偏移：整體往近/遠推（可調 0.00~0.20）
+    // 動態深度：用眼距像素估臉距離（讓眼鏡前後跟著臉）
+    const DEPTH_MIN = 0.18;
+    const DEPTH_MAX = 0.70;
+    const DEPTH_K   = 55;   // 40~80
+    const DEPTH_B   = 0.10; // 0.00~0.20
 
-    // (3) 位置動態平滑：快動作跟手、慢動作穩
-    const POS_SMOOTH_BASE = 0.35; // 慢時穩
-    const POS_SMOOTH_MAX  = 0.82; // 快時跟手（0.75~0.90）
-    const POS_SMOOTH_GAIN = 20;   // 敏感度（12~35）
+    // 動態平滑（位置）
+    const POS_SMOOTH_BASE = 0.35;
+    const POS_SMOOTH_MAX  = 0.85;
+    const POS_SMOOTH_GAIN = 20;
 
-    // (4) GLB 模型微調：offset/rot/scale
-    // 提示：先用 SUN_OFFSET.y 調上下、SUN_OFFSET.z 調前後、SUN_SCALE_MULT 調大小
-    const SUN_OFFSET = new THREE.Vector3(0.0, 0.0, 0.0);
+    // 眼鏡模型微調（依 glb 原點/朝向而定）
+    const SUN_OFFSET = new THREE.Vector3(0.0, 0.0, 0.0); // 建議先調 y（上下）/ z（前後）
     const SUN_ROT_OFFSET = new THREE.Euler(0.0, 0.0, 0.0, "XYZ");
     const SUN_SCALE_MULT = 1.0;
 
-    // (5) Debug Box 大小（僅顯示用）
+    // Debug box
     const DEBUG_BOX_SIZE = { x: 0.02, y: 0.015, z: 0.01 };
 
     // ==================== 狀態 ====================
     let scene, camera, renderer;
     let debugBox = null;
-
     let sunglassesModel = null;
     let sunglassesReady = false;
-
-    let lastTime = Date.now();
-    let frameCount = 0;
 
     let showDebug = true;
     let showBox = false;
     let showModel = true;
 
-    let noseRawCoords = { x: 0, y: 0, z: 0 };
+    // FPS
+    let lastTime = Date.now();
+    let frameCount = 0;
 
-    // ==================== 平滑濾波器（每個 key 可用不同係數）====================
+    // ==================== 平滑器 ====================
     class SmoothFilter {
       constructor(defaultFactor = 0.35) {
         this.defaultFactor = defaultFactor;
-        this.previousValues = {};
-        this.factors = {};
+        this.previous = {};
+        this.factor = {};
       }
-      setFactor(key, factor) { this.factors[key] = factor; }
-      smooth(currentValue, key) {
-        const f = (this.factors[key] !== undefined) ? this.factors[key] : this.defaultFactor;
-
-        if (this.previousValues[key] === undefined) {
-          this.previousValues[key] = currentValue;
-          return currentValue;
-        }
-        if (Array.isArray(currentValue)) {
-          const prev = this.previousValues[key];
-          const smoothed = currentValue.map((v, i) => prev[i] + (v - prev[i]) * f);
-          this.previousValues[key] = smoothed;
-          return smoothed;
+      setFactor(key, f) { this.factor[key] = f; }
+      smooth(val, key) {
+        const f = (this.factor[key] !== undefined) ? this.factor[key] : this.defaultFactor;
+        if (this.previous[key] === undefined) { this.previous[key] = val; return val; }
+        if (Array.isArray(val)) {
+          const prev = this.previous[key];
+          const out = val.map((v, i) => prev[i] + (v - prev[i]) * f);
+          this.previous[key] = out;
+          return out;
         } else {
-          const prev = this.previousValues[key];
-          const smoothed = prev + (currentValue - prev) * f;
-          this.previousValues[key] = smoothed;
-          return smoothed;
+          const prev = this.previous[key];
+          const out = prev + (val - prev) * f;
+          this.previous[key] = out;
+          return out;
         }
       }
     }
-
-    const smoothFilter = new SmoothFilter(0.35);
-    // rotation 平滑
-    smoothFilter.setFactor("boxRoll", 0.55);
-    smoothFilter.setFactor("boxYaw", 0.55);
-    smoothFilter.setFactor("boxPitch", 0.55);
-    // scale 平滑（避免忽大忽小）
-    smoothFilter.setFactor("boxScale", 0.30);
+    const smooth = new SmoothFilter(0.35);
+    smooth.setFactor("roll", 0.55);
+    smooth.setFactor("yaw", 0.55);
+    smooth.setFactor("pitch", 0.55);
+    smooth.setFactor("scale", 0.30);
 
     // ==================== 角度 unwrap（避免突然轉一圈）====================
     let prevRoll = null, prevYaw = null, prevPitch = null;
-
-    function unwrapAngle(current, prev) {
-      if (prev === null) return current;
-      let delta = current - prev;
-      while (delta > Math.PI)  delta -= 2 * Math.PI;
-      while (delta < -Math.PI) delta += 2 * Math.PI;
-      return prev + delta;
+    function unwrapAngle(cur, prev) {
+      if (prev === null) return cur;
+      let d = cur - prev;
+      while (d > Math.PI)  d -= 2*Math.PI;
+      while (d < -Math.PI) d += 2*Math.PI;
+      return prev + d;
     }
 
     // ==================== object-fit: cover 映射 ====================
@@ -301,41 +282,35 @@
       return { drawW, drawH, offsetX, offsetY };
     }
 
-    // JS 不做鏡像（由 CSS scaleX(-1) 負責）
     function landmarkToScreenPx(nx, ny, containerW, containerH, mediaW, mediaH) {
       const { drawW, drawH, offsetX, offsetY } = getCoverRect(containerW, containerH, mediaW, mediaH);
       return { x: nx * drawW + offsetX, y: ny * drawH + offsetY };
     }
 
     // ==================== 位置動態平滑（方式 3）====================
-    let prevAnchorPx = null;
+    let prevAnchor = null;
     let prevT = performance.now();
     let lastSpeed = 0;
     let lastPosFactor = POS_SMOOTH_BASE;
 
-    function updateDynamicPositionSmoothing(anchorPx) {
+    function updatePosSmoothing(anchorPx) {
       const t = performance.now();
       let speed = 0;
-
-      if (prevAnchorPx) {
+      if (prevAnchor) {
         const dt = Math.max(1, t - prevT);
-        const dx = anchorPx.x - prevAnchorPx.x;
-        const dy = anchorPx.y - prevAnchorPx.y;
-        speed = Math.hypot(dx, dy) / dt; // px/ms
+        speed = Math.hypot(anchorPx.x - prevAnchor.x, anchorPx.y - prevAnchor.y) / dt; // px/ms
       }
+      prevAnchor = anchorPx; prevT = t;
 
-      prevAnchorPx = anchorPx;
-      prevT = t;
-
-      const factor = Math.min(POS_SMOOTH_MAX, Math.max(POS_SMOOTH_BASE, POS_SMOOTH_BASE + speed * POS_SMOOTH_GAIN));
-      smoothFilter.setFactor("boxPosition", factor);
+      const f = Math.min(POS_SMOOTH_MAX, Math.max(POS_SMOOTH_BASE, POS_SMOOTH_BASE + speed * POS_SMOOTH_GAIN));
+      smooth.setFactor("pos", f);
 
       lastSpeed = speed;
-      lastPosFactor = factor;
+      lastPosFactor = f;
     }
 
     // ==================== Three.js 初始化 ====================
-    function initThreeJS() {
+    function initThree() {
       scene = new THREE.Scene();
 
       const aspect = window.innerWidth / window.innerHeight;
@@ -357,20 +332,20 @@
     }
 
     function createDebugBox() {
-      const geometry = new THREE.BoxGeometry(DEBUG_BOX_SIZE.x, DEBUG_BOX_SIZE.y, DEBUG_BOX_SIZE.z);
-      const material = new THREE.MeshPhongMaterial({ color: 0x00ff00, transparent: true, opacity: 0.82, shininess: 90 });
-      const box = new THREE.Mesh(geometry, material);
-      box.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: 0xffffff })));
+      const g = new THREE.BoxGeometry(DEBUG_BOX_SIZE.x, DEBUG_BOX_SIZE.y, DEBUG_BOX_SIZE.z);
+      const m = new THREE.MeshPhongMaterial({ color: 0x00ff00, transparent: true, opacity: 0.82, shininess: 90 });
+      const box = new THREE.Mesh(g, m);
+      box.add(new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color: 0xffffff })));
       return box;
     }
 
     // ==================== 載入 GLB ====================
-    async function loadSunglasses() {
+    async function loadGlasses() {
       const loader = new GLTFLoader();
       const gltf = await loader.loadAsync("models/sunglasses_classic.glb");
       sunglassesModel = gltf.scene;
 
-      // normalize：中心移到原點 + 初步縮放（降低超大/超小）
+      // normalize：中心移到原點 + 初步縮放
       const bbox = new THREE.Box3().setFromObject(sunglassesModel);
       const size = new THREE.Vector3();
       const center = new THREE.Vector3();
@@ -381,8 +356,7 @@
       const maxDim = Math.max(size.x, size.y, size.z);
       if (maxDim > 0) {
         const target = 1.0;
-        const s = target / maxDim;
-        sunglassesModel.scale.setScalar(s);
+        sunglassesModel.scale.setScalar(target / maxDim);
       }
 
       sunglassesModel.visible = false;
@@ -394,14 +368,12 @@
     const faceMesh = new FaceMesh({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
     });
-
     faceMesh.setOptions({
       maxNumFaces: 1,
       refineLandmarks: true,
       minDetectionConfidence: 0.5,
       minTrackingConfidence: 0.5
     });
-
     faceMesh.onResults(onResults);
 
     function onResults(results) {
@@ -417,7 +389,7 @@
       }
 
       if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-        updateAnchors(results.multiFaceLandmarks[0]);
+        updatePose(results.multiFaceLandmarks[0]);
         if (loading.style.display !== "none") loading.style.display = "none";
       } else {
         if (debugBox) debugBox.visible = false;
@@ -427,37 +399,50 @@
       renderer.render(scene, camera);
     }
 
-    // ==================== 核心：雙眼中心錨點 + 動態深度 + 姿態 ====================
-    function updateAnchors(landmarks) {
-      // 主要 landmark
-      const noseBridge = landmarks[6];
-      const noseTip = landmarks[1];
-      const leftEyeOuter = landmarks[33];
-      const rightEyeOuter = landmarks[263];
+    // ==================== 核心：NDC → Camera Space（不再用 unproject）====================
+    function ndcToCameraSpace(ndcX, ndcY, depth, cam) {
+      // depth：相機前方距離；Three.js 相機看向 -Z，所以 z = -depth
+      const fovRad = cam.fov * Math.PI / 180;
+      const halfH = Math.tan(fovRad / 2) * depth;
+      const halfW = halfH * cam.aspect;
 
-      noseRawCoords = { x: noseBridge.x, y: noseBridge.y, z: noseBridge.z };
+      const x = ndcX * halfW;
+      const y = ndcY * halfH;
+      const z = -depth;
+      return new THREE.Vector3(x, y, z);
+    }
+
+    function updatePose(landmarks) {
+      // 關鍵點
+      const noseTip = landmarks[1];
+      const leftEyeOuter  = landmarks[33];
+      const rightEyeOuter = landmarks[263];
 
       const mediaW = video.videoWidth || 1280;
       const mediaH = video.videoHeight || 720;
-      const containerW = window.innerWidth;
-      const containerH = window.innerHeight;
+      const W = window.innerWidth;
+      const H = window.innerHeight;
 
-      // ===== 1) Anchor：以「雙眼外角中心」為基準，往上微調（更像眼鏡位置）=====
+      // ===== Anchor：雙眼外角中心 + 上移 =====
       const eyeCenterNx = (leftEyeOuter.x + rightEyeOuter.x) / 2;
       const eyeCenterNy = (leftEyeOuter.y + rightEyeOuter.y) / 2;
 
       const anchorPx = landmarkToScreenPx(
         eyeCenterNx,
         eyeCenterNy + ANCHOR_UP_NORM,
-        containerW, containerH, mediaW, mediaH
+        W, H, mediaW, mediaH
       );
 
-      // 位置動態平滑：用 anchor 的像素移動速度計算
-      updateDynamicPositionSmoothing(anchorPx);
+      // NDC
+      const ndcX = (anchorPx.x / W) * 2 - 1;
+      const ndcY = -((anchorPx.y / H) * 2 - 1);
 
-      // ===== 2) 旋轉：用 2D 幾何估 roll/yaw/pitch =====
-      const lEyePx = landmarkToScreenPx(leftEyeOuter.x, leftEyeOuter.y, containerW, containerH, mediaW, mediaH);
-      const rEyePx = landmarkToScreenPx(rightEyeOuter.x, rightEyeOuter.y, containerW, containerH, mediaW, mediaH);
+      // 動態平滑（位置）
+      updatePosSmoothing(anchorPx);
+
+      // ===== 旋轉估計（2D 幾何）=====
+      const lEyePx = landmarkToScreenPx(leftEyeOuter.x, leftEyeOuter.y, W, H, mediaW, mediaH);
+      const rEyePx = landmarkToScreenPx(rightEyeOuter.x, rightEyeOuter.y, W, H, mediaW, mediaH);
 
       const eyeCenterX = (lEyePx.x + rEyePx.x) / 2;
       const eyeCenterY = (lEyePx.y + rEyePx.y) / 2;
@@ -466,88 +451,66 @@
       // roll
       let roll = Math.atan2(rEyePx.y - lEyePx.y, rEyePx.x - lEyePx.x);
       roll = unwrapAngle(roll, prevRoll); prevRoll = roll;
-      const sRoll = smoothFilter.smooth(roll, "boxRoll");
+      const sRoll = smooth.smooth(roll, "roll");
 
-      // yaw：鼻尖相對雙眼中心水平偏移（再做 yaw 方向修正）
-      const noseTipPx = landmarkToScreenPx(noseTip.x, noseTip.y, containerW, containerH, mediaW, mediaH);
+      // yaw
+      const noseTipPx = landmarkToScreenPx(noseTip.x, noseTip.y, W, H, mediaW, mediaH);
       let yaw = Math.atan2((noseTipPx.x - eyeCenterX), Math.max(1, eyeDistPx)) * 1.2;
       yaw = unwrapAngle(yaw, prevYaw); prevYaw = yaw;
-      yaw = -yaw;
-      const sYaw = smoothFilter.smooth(yaw, "boxYaw");
+      yaw = -yaw; // yaw 方向修正
+      const sYaw = smooth.smooth(yaw, "yaw");
 
-      // pitch：鼻尖相對雙眼中心垂直偏移
+      // pitch
       let pitch = Math.atan2((noseTipPx.y - eyeCenterY), Math.max(1, eyeDistPx)) * 1.0;
       pitch = unwrapAngle(pitch, prevPitch); prevPitch = pitch;
-      const sPitch = smoothFilter.smooth(pitch, "boxPitch");
+      const sPitch = smooth.smooth(pitch, "pitch");
 
-      // 三維旋轉（XYZ）
       const finalRot = new THREE.Euler(sPitch, sYaw, -sRoll, "XYZ");
 
-      // ===== 3) 動態深度：用 eyeDistPx 估臉離鏡頭距離 =====
-      // 眼距越大 → 臉越近 → 距離應更小（更貼臉）
-      let dynamicD = (DEPTH_K / Math.max(40, eyeDistPx)) + DEPTH_B;
-      dynamicD = Math.max(DEPTH_MIN, Math.min(DEPTH_MAX, dynamicD));
+      // ===== 動態深度：用 eyeDistPx 估距離（這裡是關鍵）=====
+      let depth = (DEPTH_K / Math.max(40, eyeDistPx)) + DEPTH_B;
+      depth = Math.max(DEPTH_MIN, Math.min(DEPTH_MAX, depth));
 
-      // ===== 4) anchorPx（螢幕像素）→ NDC → unproject → ray → dynamicD =====
-      const ndcX = (anchorPx.x / containerW) * 2 - 1;
-      const ndcY = -((anchorPx.y / containerH) * 2 - 1);
+      // ===== NDC → Camera Space 位置（穩定且一定會跟著 anchor 變化）=====
+      const target = ndcToCameraSpace(ndcX, ndcY, depth, camera);
+      const pos = smooth.smooth([target.x, target.y, target.z], "pos");
 
-      const v = new THREE.Vector3(ndcX, ndcY, 0.5).unproject(camera);
-      const dir = v.clone().sub(camera.position).normalize();
+      // ===== scale =====
+      const scale = smooth.smooth(eyeDistPx * 0.0025, "scale");
 
-      const targetPos = camera.position.clone().add(dir.multiplyScalar(dynamicD));
-      const smoothedPos = smoothFilter.smooth([targetPos.x, targetPos.y, targetPos.z], "boxPosition");
-
-      // ===== 5) 縮放：仍用 eyeDistPx 映射（與深度相輔相成）=====
-      const scale = smoothFilter.smooth(eyeDistPx * 0.0025, "boxScale");
-
-      // ===== 6) 更新 Debug Box =====
+      // Debug box
       if (debugBox) {
         debugBox.visible = showBox;
         if (showBox) {
-          debugBox.position.set(smoothedPos[0], smoothedPos[1], smoothedPos[2]);
+          debugBox.position.set(pos[0], pos[1], pos[2]);
           debugBox.rotation.copy(finalRot);
           debugBox.scale.set(scale, scale, scale);
         }
       }
 
-      // ===== 7) 更新 GLB 眼鏡模型 =====
+      // GLB glasses
       if (sunglassesReady && sunglassesModel) {
         sunglassesModel.visible = showModel;
         if (showModel) {
-          // offset 需跟著頭部旋轉，避免轉頭後偏移方向錯
           const rotatedOffset = SUN_OFFSET.clone().applyEuler(finalRot);
-
-          sunglassesModel.position.set(
-            smoothedPos[0] + rotatedOffset.x,
-            smoothedPos[1] + rotatedOffset.y,
-            smoothedPos[2] + rotatedOffset.z
-          );
-
-          sunglassesModel.rotation.set(
-            finalRot.x + SUN_ROT_OFFSET.x,
-            finalRot.y + SUN_ROT_OFFSET.y,
-            finalRot.z + SUN_ROT_OFFSET.z
-          );
-
+          sunglassesModel.position.set(pos[0] + rotatedOffset.x, pos[1] + rotatedOffset.y, pos[2] + rotatedOffset.z);
+          sunglassesModel.rotation.set(finalRot.x + SUN_ROT_OFFSET.x, finalRot.y + SUN_ROT_OFFSET.y, finalRot.z + SUN_ROT_OFFSET.z);
           const s = scale * SUN_SCALE_MULT;
           sunglassesModel.scale.set(s, s, s);
         }
       }
 
-      // ===== 8) Debug UI =====
+      // Debug UI（用來確認 anchor/ndc/eyeDist 是否真的在變）
       if (showDebug) {
         anchorInfoEl.innerHTML =
           `anchorPx: [${anchorPx.x.toFixed(1)}, ${anchorPx.y.toFixed(1)}]<br/>` +
-          `ANCHOR_UP_NORM: ${ANCHOR_UP_NORM.toFixed(3)}`;
+          `ndc: [${ndcX.toFixed(3)}, ${ndcY.toFixed(3)}]<br/>` +
+          `eyeDistPx: ${eyeDistPx.toFixed(1)}`;
 
-        noseCoordsEl.innerHTML =
-          `X: ${noseRawCoords.x.toFixed(4)}<br/>Y: ${noseRawCoords.y.toFixed(4)}<br/>Z: ${noseRawCoords.z.toFixed(4)}`;
-
-        boxCoordsEl.innerHTML =
-          `pos: [${smoothedPos.map(v => v.toFixed(3)).join(", ")}]<br/>` +
-          `depth(dynamicD): ${dynamicD.toFixed(3)}<br/>` +
-          `scale: ${scale.toFixed(3)}<br/>eyeDistPx: ${eyeDistPx.toFixed(1)} px`;
+        posInfoEl.innerHTML =
+          `pos: [${pos.map(v => v.toFixed(3)).join(", ")}]<br/>` +
+          `depth: ${depth.toFixed(3)} (min ${DEPTH_MIN}, max ${DEPTH_MAX})<br/>` +
+          `scale: ${scale.toFixed(3)}`;
 
         rotInfoEl.innerHTML =
           `roll: ${(sRoll*180/Math.PI).toFixed(1)}°<br/>` +
@@ -559,7 +522,9 @@
           `posFactor: ${lastPosFactor.toFixed(2)} (${POS_SMOOTH_BASE.toFixed(2)}~${POS_SMOOTH_MAX.toFixed(2)})<br/>` +
           `gain: ${POS_SMOOTH_GAIN}`;
 
-        modelTuningEl.innerHTML =
+        tuningInfoEl.innerHTML =
+          `ANCHOR_UP_NORM: ${ANCHOR_UP_NORM}<br/>` +
+          `DEPTH_K/B: ${DEPTH_K}/${DEPTH_B}<br/>` +
           `SUN_OFFSET: [${SUN_OFFSET.x.toFixed(3)}, ${SUN_OFFSET.y.toFixed(3)}, ${SUN_OFFSET.z.toFixed(3)}]<br/>` +
           `SUN_ROT_OFFSET: [${SUN_ROT_OFFSET.x.toFixed(2)}, ${SUN_ROT_OFFSET.y.toFixed(2)}, ${SUN_ROT_OFFSET.z.toFixed(2)}]<br/>` +
           `SUN_SCALE_MULT: ${SUN_SCALE_MULT.toFixed(2)}`;
@@ -586,18 +551,17 @@
     });
 
     window.addEventListener("resize", () => {
-      const aspect = window.innerWidth / window.innerHeight;
-      camera.aspect = aspect;
+      camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
     // ==================== 啟動 ====================
     async function init() {
-      initThreeJS();
+      initThree();
 
       try {
-        await loadSunglasses();
+        await loadGlasses();
       } catch (e) {
         console.error("❌ GLB 載入失敗：", e);
       }
