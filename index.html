@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>WebAR｜GLB 眼鏡貼臉版（Root Group 修正：模型會跟著平移）</title>
+  <title>WebAR｜GLB 眼鏡貼臉版（Root Group + 正確縮放）</title>
 
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -45,7 +45,7 @@
       padding: 10px 12px; border-radius: 8px; font-size: 12px; z-index: 100;
       font-family: ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       box-shadow: 0 2px 10px rgba(0,0,0,0.35);
-      white-space: pre; min-width: 220px;
+      white-space: pre; min-width: 230px;
     }
 
     .debug-info {
@@ -97,15 +97,15 @@
         <div class="value" id="anchorInfo">--</div>
       </div>
       <div class="section">
-        <div class="label">📦 位置 / 深度 / 縮放</div>
+        <div class="label">📦 Position / Depth / Scale</div>
         <div class="value" id="posInfo">--</div>
       </div>
       <div class="section">
-        <div class="label">🧭 旋轉（roll / yaw / pitch）</div>
+        <div class="label">🧭 Rotation（roll / yaw / pitch）</div>
         <div class="diff" id="rotInfo">--</div>
       </div>
       <div class="section">
-        <div class="label">🕶️ Root / 模型狀態</div>
+        <div class="label">🕶️ Model State（是否真的可見）</div>
         <div class="value" id="modelInfo">--</div>
       </div>
     </div>
@@ -132,7 +132,7 @@
     const rotInfoEl = document.getElementById("rotInfo");
     const modelInfoEl = document.getElementById("modelInfo");
 
-    // ========= 可調參數 =========
+    // ========= 參數（你最常調）=========
     const ANCHOR_UP_NORM = -0.015;
 
     const DEPTH_MIN = 0.18;
@@ -140,14 +140,20 @@
     const DEPTH_K   = 55;
     const DEPTH_B   = 0.10;
 
+    // 位置動態平滑
     const POS_SMOOTH_BASE = 0.35;
     const POS_SMOOTH_MAX  = 0.85;
     const POS_SMOOTH_GAIN = 20;
 
-    // 模型微調（套用在 Root 上，會跟著頭轉/移動）
+    // ★★ 眼鏡縮放：這裡是關鍵（之前太小） ★★
+    // eyeDistPx * SCALE_K ≈ 眼鏡 root 的 scale
+    // 建議範圍：0.004 ~ 0.010（視你的 glb 尺寸而定）
+    const SCALE_K = 0.0065;
+    const SUN_SCALE_MULT = 1.0;
+
+    // 模型微調（作用在 root，會跟著移動與旋轉）
     const SUN_OFFSET = new THREE.Vector3(0.0, 0.0, 0.0);
     const SUN_ROT_OFFSET = new THREE.Euler(0.0, 0.0, 0.0, "XYZ");
-    const SUN_SCALE_MULT = 1.0;
 
     const DEBUG_BOX_SIZE = { x: 0.02, y: 0.015, z: 0.01 };
 
@@ -155,7 +161,6 @@
     let scene, camera, renderer;
     let debugBox = null;
 
-    // 重要：新增 root，之後移動/旋轉/縮放都只動 root
     let glassesRoot = null;
     let glassesModel = null;
     let glassesReady = false;
@@ -196,9 +201,9 @@
     smooth.setFactor("roll", 0.55);
     smooth.setFactor("yaw", 0.55);
     smooth.setFactor("pitch", 0.55);
-    smooth.setFactor("scale", 0.30);
+    smooth.setFactor("scale", 0.35);
 
-    // ========= unwrap =========
+    // unwrap 避免突然轉一圈
     let prevRoll = null, prevYaw = null, prevPitch = null;
     function unwrapAngle(cur, prev) {
       if (prev === null) return cur;
@@ -291,7 +296,7 @@
       return box;
     }
 
-    // ========= Load GLB（關鍵修正：Root Group）=========
+    // ========= Load GLB（Root Group + 不 normalize scale）=========
     async function loadGlasses() {
       const loader = new GLTFLoader();
       const gltf = await loader.loadAsync("models/sunglasses_classic.glb");
@@ -302,25 +307,22 @@
 
       glassesModel = gltf.scene;
 
-      // 1) 先把模型置中到 root 的原點（只改 model 的 local position，不再被每幀覆蓋）
+      // 1) 只做「置中」：把模型幾何中心移到 root 原點
       const bbox = new THREE.Box3().setFromObject(glassesModel);
-      const size = new THREE.Vector3();
       const center = new THREE.Vector3();
-      bbox.getSize(size);
       bbox.getCenter(center);
+      glassesModel.position.sub(center);
 
-      glassesModel.position.sub(center); // local offset（保留在 root 底下）
+      // 2) 保險：避免視錐裁切判定造成看不到
+      glassesModel.traverse((obj) => {
+        obj.frustumCulled = false;
+      });
 
-      // 2) 初步 normalize（model local scale）
-      const maxDim = Math.max(size.x, size.y, size.z);
-      if (maxDim > 0) {
-        glassesModel.scale.setScalar(1.0 / maxDim);
-      }
-
-      // 3) 把 model 掛到 root
+      // 3) 加到 root
       glassesRoot.add(glassesModel);
 
       glassesReady = true;
+      console.log("✅ GLB 載入完成：", gltf);
     }
 
     // ========= MediaPipe =========
@@ -342,7 +344,8 @@
         infoDiv.textContent =
           `FPS: ${frameCount}\n` +
           `PosSmooth: ${lastPosFactor.toFixed(2)}\n` +
-          `Speed: ${lastSpeed.toFixed(3)} px/ms`;
+          `Speed: ${lastSpeed.toFixed(3)} px/ms\n` +
+          `glassesReady: ${glassesReady}`;
         frameCount = 0;
         lastTime = now;
       }
@@ -407,12 +410,13 @@
       let depth = (DEPTH_K / Math.max(40, eyeDistPx)) + DEPTH_B;
       depth = Math.max(DEPTH_MIN, Math.min(DEPTH_MAX, depth));
 
-      // position in camera space
+      // position
       const target = ndcToCameraSpace(ndcX, ndcY, depth, camera);
       const pos = smooth.smooth([target.x, target.y, target.z], "pos");
 
-      // scale
-      const scale = smooth.smooth(eyeDistPx * 0.0025, "scale");
+      // ★ 眼鏡 root scale：只由 eyeDistPx 控制（不再疊乘 normalize）
+      const rawScale = eyeDistPx * SCALE_K * SUN_SCALE_MULT;
+      const s = smooth.smooth(rawScale, "scale");
 
       // debug box
       if (debugBox) {
@@ -420,22 +424,17 @@
         if (showBox) {
           debugBox.position.set(pos[0], pos[1], pos[2]);
           debugBox.rotation.copy(finalRot);
-          debugBox.scale.set(scale, scale, scale);
+          debugBox.scale.set(s, s, s);
         }
       }
 
-      // GLB：移動/旋轉/縮放 root（關鍵）
+      // GLB：更新 root（位置/旋轉/縮放）
       if (glassesReady && glassesRoot) {
         glassesRoot.visible = showModel;
-
         if (showModel) {
-          // offset 也作用在 root（並跟著頭部旋轉）
           const rotatedOffset = SUN_OFFSET.clone().applyEuler(finalRot);
-
           glassesRoot.position.set(pos[0] + rotatedOffset.x, pos[1] + rotatedOffset.y, pos[2] + rotatedOffset.z);
           glassesRoot.rotation.set(finalRot.x + SUN_ROT_OFFSET.x, finalRot.y + SUN_ROT_OFFSET.y, finalRot.z + SUN_ROT_OFFSET.z);
-
-          const s = scale * SUN_SCALE_MULT;
           glassesRoot.scale.set(s, s, s);
         }
       }
@@ -450,7 +449,8 @@
         posInfoEl.innerHTML =
           `pos: [${pos.map(v => v.toFixed(3)).join(", ")}]<br/>` +
           `depth: ${depth.toFixed(3)}<br/>` +
-          `scale: ${scale.toFixed(3)}`;
+          `scale(raw): ${(rawScale).toFixed(3)}  → smooth: ${s.toFixed(3)}<br/>` +
+          `SCALE_K: ${SCALE_K}`;
 
         rotInfoEl.innerHTML =
           `roll: ${(sRoll*180/Math.PI).toFixed(1)}°<br/>` +
@@ -459,9 +459,9 @@
 
         modelInfoEl.innerHTML =
           `glassesReady: ${glassesReady}<br/>` +
-          `rootPos: [${glassesRoot ? glassesRoot.position.toArray().map(v=>v.toFixed(3)).join(", ") : "--"}]<br/>` +
-          `rootVis: ${glassesRoot ? glassesRoot.visible : "--"}<br/>` +
-          `modelChildren: ${glassesRoot ? glassesRoot.children.length : "--"}`;
+          `rootVisible: ${glassesRoot ? glassesRoot.visible : "--"}<br/>` +
+          `rootScale: ${glassesRoot ? glassesRoot.scale.x.toFixed(3) : "--"}<br/>` +
+          `children: ${glassesRoot ? glassesRoot.children.length : "--"}`;
       }
     }
 
