@@ -521,7 +521,7 @@
     });
     document.getElementById("toggleDebug").addEventListener("click", () => {
       showDebug = !showDebug;
-      debugInfoDiv.style.display = showDebug ? "block" : "none";
+      debugInfoDiv.style.display = showDebug ? "none": "block"  ;
       document.getElementById("toggleDebug").classList.toggle("active");
     });
     window.addEventListener("resize", () => {
