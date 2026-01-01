@@ -150,7 +150,7 @@
     // 眼鏡在 faceAnchor local 的微調
     const SUN_OFFSET = new THREE.Vector3(0.0, 0.0, 0.0);
     const SUN_ROT_OFFSET = new THREE.Euler(0.0, 0.0, 0.0, "XYZ");
-    const SUN_LOCAL_SCALE = 0.15;  // 放大眼鏡
+    const SUN_LOCAL_SCALE = 0.2;  // 放大眼鏡
 
     const PITCH_OFFSET = -0.4; // 單位：弧度（約 -8.6°）
 
@@ -441,7 +441,7 @@
       // const rawScale = eyeDistPx * SCALE_K;
 
       const SCALE_REF = 100;     // 參考眼距(px)，可調
-      const SCALE_EXP = 0.4;    // 0.5~0.85，越小變化越不敏感
+      const SCALE_EXP = 0.35;    // 0.5~0.85，越小變化越不敏感
 
       //const rawScale = SCALE_K * SCALE_REF * Math.pow(eyeDistPx / SCALE_REF, SCALE_EXP);
       const rawScale0 = SCALE_K * SCALE_REF * Math.pow(eyeDistPx / SCALE_REF, SCALE_EXP);
