@@ -175,8 +175,8 @@
     let debugBox, anchorMarker;
     let glassesReady = false;
 
-    let showDebug = true;
-    let showBox = true;
+    let showDebug = flase;
+    let showBox = false;
     let showModel = true;
 
     // FPS
@@ -296,11 +296,11 @@
       faceAnchor.add(glassesRoot);
 
       // 紅球（驗證平移）
-      anchorMarker = new THREE.Mesh(
-        new THREE.SphereGeometry(0.01, 16, 16),
-        new THREE.MeshBasicMaterial({ color: 0xff0000 })
-      );
-      glassesRoot.add(anchorMarker);
+      //anchorMarker = new THREE.Mesh(
+      //  new THREE.SphereGeometry(0.01, 16, 16),
+      //  new THREE.MeshBasicMaterial({ color: 0xff0000 })
+      //);
+      // glassesRoot.add(anchorMarker);
     }
 
     // ★★★ 重點：Pivot 校正 + Normalize（讓模型的幾何回到原點、尺度合理）★★★
