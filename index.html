@@ -149,7 +149,8 @@
     const SUN_ROT_OFFSET = new THREE.Euler(0.0, 0.0, 0.0, "XYZ");
     const SUN_LOCAL_SCALE = 0.1;
 
-    const MIRROR_YAW = true;   // 目前畫面是 scaleX(-1) 的鏡像，通常要 true
+    const PITCH_OFFSET = -0.15; // 單位：弧度（約 -8.6°）
+
 
 
     // ★ Normalize 模型到「最大邊長 = MODEL_UNIT」：避免巨大尺度造成「看似不移動」
@@ -411,7 +412,9 @@
       const sYaw = smooth.smooth(yaw, "yaw");
 
       let pitch = Math.atan2((noseTipPx.y - eyeCenterY), Math.max(1, eyeDistPx)) * 1.0;
-      pitch = unwrapAngle(pitch, prevPitch); prevPitch = pitch;
+      pitch = unwrapAngle(pitch, prevPitch); 
+      prevPitch = pitch;
+      pitch += PITCH_OFFSET;
       const sPitch = smooth.smooth(pitch, "pitch");
 
       const faceRot = new THREE.Euler(sPitch, sYaw, -sRoll, "XYZ");
