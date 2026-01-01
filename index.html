@@ -292,7 +292,7 @@
     // ★★★ 重點：Pivot 校正 + Normalize（讓模型的幾何回到原點、尺度合理）★★★
     async function loadGlasses() {
       const loader = new GLTFLoader();
-      const gltf = await loader.loadAsync("models/sunglasses_classic.glb");
+      const gltf = await loader.loadAsync("models/ray_ban_glasses.glb");
       glassesModel = gltf.scene;
 
       glassesModel.traverse((o) => {
