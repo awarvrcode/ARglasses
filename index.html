@@ -150,7 +150,7 @@
     // 眼鏡在 faceAnchor local 的微調
     const SUN_OFFSET = new THREE.Vector3(0.0, 0.0, 0.0);
     const SUN_ROT_OFFSET = new THREE.Euler(0.0, 0.0, 0.0, "XYZ");
-    const SUN_LOCAL_SCALE = 0.2;  // 放大眼鏡
+    const SUN_LOCAL_SCALE = 0.185;  // 放大眼鏡
 
     const PITCH_OFFSET = -0.4; // 單位：弧度（約 -8.6°）
 
@@ -416,12 +416,20 @@
 
       const noseTipPx = landmarkToScreenPx(noseTip.x, noseTip.y, W, H, mediaW, mediaH);
 
-      let yaw = Math.atan2((noseTipPx.x - eyeCenterX), Math.max(1, eyeDistPx)) * 1.2;
+      //let yaw = Math.atan2((noseTipPx.x - eyeCenterX), Math.max(1, eyeDistPx)) * 1.2;
+      const YAW_GAIN = 0.65;    // 原本 1.2 太大，先降到 0.55~0.75
+      const PITCH_GAIN = 0.70;  // 先降到 0.60~0.85
+
+      let yaw   = Math.atan2((noseTipPx.x - eyeCenterX), Math.max(1, eyeDistPx)) * YAW_GAIN;
+     
+
+
       yaw = unwrapAngle(yaw, prevYaw); prevYaw = yaw;
       //yaw = -yaw;
       const sYaw = smooth.smooth(yaw, "yaw");
 
-      let pitch = Math.atan2((noseTipPx.y - eyeCenterY), Math.max(1, eyeDistPx)) * 1.0;
+      //let pitch = Math.atan2((noseTipPx.y - eyeCenterY), Math.max(1, eyeDistPx)) * 1.0;
+      let pitch = Math.atan2((noseTipPx.y - eyeCenterY), Math.max(1, eyeDistPx)) * PITCH_GAIN;
       pitch = unwrapAngle(pitch, prevPitch); 
       prevPitch = pitch;
       pitch += PITCH_OFFSET;
