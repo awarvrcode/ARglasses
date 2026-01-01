@@ -152,7 +152,7 @@
     const SUN_ROT_OFFSET = new THREE.Euler(0.0, 0.0, 0.0, "XYZ");
     const SUN_LOCAL_SCALE = 0.185;  // 放大眼鏡
 
-    const PITCH_OFFSET = -0.31; // 單位：弧度（約 -8.6°） pitch 越小, 越朝上
+    const PITCH_OFFSET = -0.25; // 單位：弧度（約 -8.6°） pitch 越小, 越朝上
 
     // 直立補償（aspect 越小補越多）
     const PORTRAIT_REF_ASPECT = 16/9;   // 以你桌機/橫向的感覺當 baseline
@@ -448,8 +448,8 @@
       // scale (single source of truth)
       // const rawScale = eyeDistPx * SCALE_K;
 
-      const SCALE_REF = 100;     // 參考眼距(px)，可調
-      const SCALE_EXP = 0.35;    // 0.5~0.85，越小變化越不敏感
+      const SCALE_REF = 80;     // 參考眼距(px)，可調
+      const SCALE_EXP = 0.3;    // 0.5~0.85，越小變化越不敏感
 
       //const rawScale = SCALE_K * SCALE_REF * Math.pow(eyeDistPx / SCALE_REF, SCALE_EXP);
       const rawScale0 = SCALE_K * SCALE_REF * Math.pow(eyeDistPx / SCALE_REF, SCALE_EXP);
