@@ -532,6 +532,8 @@
 
     async function init() {
       initThree();
+       showDebug = false;
+       debugInfoDiv.style.display = "none";
       try { await loadGlasses(); } catch (e) { console.error("❌ GLB 載入失敗：", e); }
 
       const cameraInstance = new Camera(video, {
