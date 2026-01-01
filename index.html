@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>WebAR｜GLB 眼鏡貼臉 Debug 強制版（驗證是否真的跟著平移）</title>
+  <title>WebAR｜GLB 眼鏡貼臉 Debug 強制版（修正版）</title>
 
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -291,7 +291,7 @@
       glassesRoot.visible = false;
       faceAnchor.add(glassesRoot);
 
-      // ★ 用紅球標示 glassesRoot 原點（只要 faceAnchor 移動，它一定移動）
+      // red marker at glassesRoot origin
       anchorMarker = new THREE.Mesh(
         new THREE.SphereGeometry(0.01, 16, 16),
         new THREE.MeshBasicMaterial({ color: 0xff0000 })
@@ -304,13 +304,11 @@
       const gltf = await loader.loadAsync("models/sunglasses_classic.glb");
       glassesModel = gltf.scene;
 
-      // 強制所有節點可更新（避免 glTF matrix 固定）
       glassesModel.traverse((o) => {
         o.matrixAutoUpdate = true;
         o.frustumCulled = false;
       });
 
-      // 只做置中（local）
       const bbox = new THREE.Box3().setFromObject(glassesModel);
       const center = new THREE.Vector3();
       bbox.getCenter(center);
@@ -353,9 +351,7 @@
         glassesRoot.visible = false;
       }
 
-      // 強制更新世界矩陣（排除任何 matrix 鎖住問題）
       faceAnchor.updateMatrixWorld(true);
-
       renderer.render(scene, camera);
     }
 
@@ -371,13 +367,13 @@
       const W = window.innerWidth;
       const H = window.innerHeight;
 
-      // Anchor：雙眼外角中心 + 上移
+      // Anchor
       const eyeCenterNx = (leftEyeOuter.x + rightEyeOuter.x) / 2;
       const eyeCenterNy = (leftEyeOuter.y + rightEyeOuter.y) / 2;
 
       const anchorPx = landmarkToScreenPx(eyeCenterNx, eyeCenterNy + ANCHOR_UP_NORM, W, H, mediaW, mediaH);
       const ndcX = (anchorPx.x / W) * 2 - 1;
-      const ndcY = -((anchorPx.y / H) * 2 - 1;
+      const ndcY = -((anchorPx.y / H) * 2 - 1); // ✅ 修正：補上右括號
 
       updatePosSmoothing(anchorPx);
 
@@ -409,26 +405,26 @@
       let depth = (DEPTH_K / Math.max(40, eyeDistPx)) + DEPTH_B;
       depth = Math.max(DEPTH_MIN, Math.min(DEPTH_MAX, depth));
 
-      // pos (camera space)
+      // pos
       const target = ndcToCameraSpace(ndcX, ndcY, depth, camera);
       const pos = smooth.smooth([target.x, target.y, target.z], "pos");
 
-      // scale (single source of truth)
+      // scale
       const rawScale = eyeDistPx * SCALE_K;
       const s = smooth.smooth(rawScale, "scale");
 
-      // ★ 更新 faceAnchor（只要這裡動，所有子節點一定跟著動）
+      // update faceAnchor
       faceAnchor.position.set(pos[0], pos[1], pos[2]);
       faceAnchor.rotation.copy(faceRot);
       faceAnchor.scale.set(s, s, s);
 
-      // 眼鏡 local 微調（不影響是否跟著平移）
+      // update glassesRoot local
       glassesRoot.visible = showModel && glassesReady;
       glassesRoot.position.copy(SUN_OFFSET);
       glassesRoot.rotation.copy(SUN_ROT_OFFSET);
       glassesRoot.scale.setScalar(SUN_LOCAL_SCALE);
 
-      // Debug：顯示世界座標
+      // world positions
       const fa = new THREE.Vector3();
       const gr = new THREE.Vector3();
       faceAnchor.getWorldPosition(fa);
@@ -453,7 +449,7 @@
           `glassesReady: ${glassesReady}<br/>` +
           `glassesRoot.visible: ${glassesRoot.visible}<br/>` +
           `children(glassesRoot): ${glassesRoot.children.length}<br/>` +
-          `紅球(錨點)應該必定跟著移動`;
+          `紅球（錨點）應該必定跟著移動`;
       }
     }
 
